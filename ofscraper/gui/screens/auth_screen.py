@@ -54,7 +54,9 @@ def render(nav):
         with ui.row().classes("w-full items-center"):
             status_label = ui.label("Auth status: unknown").classes("font-mono")
             ui.space()
-            ui.button("Check status", on_click=lambda: _check(status_label))
+            check_button = ui.button(
+                "Check status", on_click=lambda: _check(status_label, check_button)
+            )
         ui.separator()
         placeholders = {
             "sess": "short token from the sess cookie (auto-imported)",
@@ -116,22 +118,42 @@ def render(nav):
         if state.auth_status_version != last_status:
             last_status = state.auth_status_version
             status_label.set_text(state.auth_status_message)
+            check_button.set_enabled(True)
 
     ui.timer(0.25, poll_import)
 
 
-def _check(status_label):
-    def work():
-        from ofscraper.gui.state import get_state
+def _check(status_label, button):
+    """Check auth against the API. getstatus() retries internally and can
+    take 30+ seconds — set immediate feedback so the button never looks
+    dead while that runs."""
+    import time as _time
 
+    from ofscraper.gui.state import get_state
+
+    state = get_state()
+    status_label.set_text("Auth status: checking… (can take ~30s)")
+    button.set_enabled(False)
+    started = _time.time()
+
+    def work():
         try:
             import ofscraper.data.api.init as init
 
             result = init.getstatus()
         except Exception as E:
             result = f"error: {E}"
-        state = get_state()
-        state.auth_status_message = f"Auth status: {result}"
+        elapsed = _time.time() - started
+        if result == "UP":
+            message = f"Auth status: UP ({elapsed:.0f}s) — you're logged in"
+        else:
+            message = (
+                f"Auth status: {result} ({elapsed:.0f}s) — most often the "
+                "x-bc header (must come from a Network-tab REQUEST header, "
+                "not a cookie) or a user_agent mismatch with the browser "
+                "the sess cookie came from"
+            )
+        state.auth_status_message = message
         state.auth_status_version += 1
 
     threading.Thread(target=work, name="gui-auth-status", daemon=True).start()
@@ -242,6 +264,11 @@ def _import_browser(browser_name, inputs, label):
                     "a Network-tab request (x-bc is a REQUEST HEADER, never "
                     "a cookie)"
                 )
+                from ofscraper.gui.state import get_state
+
+                # remember the fp cookie so Save can catch the classic
+                # fp-pasted-as-x-bc mistake
+                get_state().auth_fp_cookie = cookies.get("fp", "")
             elif cookies:
                 result = {}
                 message = (
@@ -302,6 +329,20 @@ def _save(inputs):
     ]
     if missing:
         ui.notify(f"Missing required fields: {', '.join(missing)}", type="negative")
+        return
+
+    from ofscraper.gui.state import get_state
+
+    fp = get_state().auth_fp_cookie
+    if fp and auth.get("x-bc") == fp:
+        ui.notify(
+            "That x-bc is the 'fp' COOKIE from your browser, not the x-bc "
+            "request header — OnlyFans will reject it. Get the real value: "
+            "F12 → Network tab → reload → click an onlyfans.com/api2/... "
+            "request → Request Headers → x-bc",
+            type="negative",
+            multi_line=True,
+        )
         return
 
     try:

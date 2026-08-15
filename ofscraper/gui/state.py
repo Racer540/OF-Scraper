@@ -70,6 +70,7 @@ class GuiState:
         self.auth_import_version = 0
         self.auth_status_message = ""
         self.auth_status_version = 0
+        self.auth_fp_cookie = ""  # to catch fp-pasted-as-x-bc on save
 
         # --- log bridge ------------------------------------------------------
         self.log_buffer = LogBuffer()
