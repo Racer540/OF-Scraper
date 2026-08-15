@@ -47,6 +47,8 @@ dependencies = [
   "xxhash~=3.4.1",
   "pyyaml>=6.0.2",
   "dotenv>=0.9.9",
+  "nicegui~=3.10",
+  "pywebview>=5.4 ; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -64,6 +66,7 @@ ffmpeg = ["pyffmpeg>=2.5.2.3.1"]
 
 [project.scripts]
 ofscraper = "ofscraper.__main__:main"
+ofscraper-gui = "ofscraper.gui.app:main"
 
 [project.urls]
 "Homepage" = "https://github.com/datawhores/OF-Scraper"
