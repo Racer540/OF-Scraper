@@ -306,19 +306,19 @@ def _save(inputs):
 
     try:
         import ofscraper.utils.auth.schema as auth_schema
-        import ofscraper.utils.auth.utils.warning.check as auth_check
         import ofscraper.utils.paths.common as common_paths
 
+        # Note: the CLI's make_auth ends with check_auth_warning(), a
+        # terminal Yes/No ("Is the auth information correct?") after
+        # printing reminders — in the GUI, pressing Save IS that
+        # confirmation, and the reminders live in the field placeholders,
+        # so we validate via schema normalization only.
         normalized = auth_schema.auth_schema(auth)
-        if not auth_check.check_auth_warning(normalized):
-            ui.notify(
-                "Auth validation failed — check the fields and try again",
-                type="negative",
-            )
-            return
         auth_file = common_paths.get_auth_file()
         with open(auth_file, "w") as f:
             f.write(json.dumps(normalized, indent=4))
-        ui.notify(f"Saved to {auth_file}", type="positive")
+        ui.notify(
+            f"Saved to {auth_file} — press 'Check status' to verify", type="positive"
+        )
     except Exception as E:
         ui.notify(f"Save failed: {E}", type="negative")
