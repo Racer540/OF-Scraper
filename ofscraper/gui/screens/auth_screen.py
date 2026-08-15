@@ -56,14 +56,18 @@ def render(nav):
             ui.space()
             ui.button("Check status", on_click=lambda: _check(status_label))
         ui.separator()
+        placeholders = {
+            "sess": "short token from the sess cookie (auto-imported)",
+            "auth_id": "numeric id (auto-imported)",
+            "auth_uid": "0 for your own account",
+            "user_agent": "from a Network-tab request header: Mozilla/5.0 (Windows NT 10.0; ...)",
+            "x-bc": "40-char hex from the x-bc REQUEST HEADER (Network tab) — NOT a cookie",
+        }
         for field in FIELDS:
-            placeholder = (
-                "very long cookie string starting with %3D..."
-                if field == "sess"
-                else field
-            )
             inputs[field] = ui.input(
-                field, value=auth.get(field) or auth.get(f"{field}_") or ""
+                field,
+                value=auth.get(field) or auth.get(f"{field}_") or "",
+                placeholder=placeholders.get(field, field),
             ).classes("w-full")
             if field == "sess":
                 inputs[field].props("type=password")
@@ -105,10 +109,9 @@ def render(nav):
                 if field in inputs:
                     inputs[field].set_value(value)
             import_label.set_text(state.auth_import_message)
-            if result and _looks_logged_in(result.get("sess", "")):
+            if result:
                 ui.notify(state.auth_import_message, type="positive")
             else:
-                # visitor-only import or outright failure — never celebrate
                 ui.notify(state.auth_import_message, type="warning")
         if state.auth_status_version != last_status:
             last_status = state.auth_status_version
@@ -221,16 +224,6 @@ def _browser_cookies(browser_name: str) -> dict:
     return {cookie.name: cookie.value or "" for cookie in jar}
 
 
-def _looks_logged_in(sess: str) -> bool:
-    """Best-effort format check for advisory messaging only.
-
-    The classic logged-in OF sess is URL-encoded JSON (%7B%22auth_id...) and
-    long; the current site also issues shorter opaque tokens, so this must
-    NEVER gate the import — only annotate it.
-    """
-    return bool(sess) and (sess.startswith("%7B") or len(sess) > 100)
-
-
 def _import_browser(browser_name, inputs, label):
     def work():
         try:
@@ -244,17 +237,11 @@ def _import_browser(browser_name, inputs, label):
                     "auth_id": auth_id,
                     "auth_uid": auth_uid,
                 }
-                if _looks_logged_in(sess):
-                    message = "cookies imported — now paste x-bc and user_agent"
-                else:
-                    message = (
-                        "Imported only visitor cookies — Firefox is running "
-                        "and your login session lives in its memory. To get "
-                        "the real sess: in Firefox press F12 → Storage "
-                        "(tab) → Cookies → onlyfans.com → copy the LONG "
-                        "value of 'sess' and paste it into the sess field "
-                        "here, then Save."
-                    )
+                message = (
+                    "cookies imported — now paste x-bc and user_agent from "
+                    "a Network-tab request (x-bc is a REQUEST HEADER, never "
+                    "a cookie)"
+                )
             elif cookies:
                 result = {}
                 message = (
