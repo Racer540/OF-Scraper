@@ -88,8 +88,34 @@ def render(nav):
             )
         ui.label(
             "Fills sess / auth_id / auth_uid from your browser's onlyfans "
-            "cookies. Firefox: all profiles are scanned. Chrome/Edge: the "
-            "browser must be closed for cookie decryption on Windows."
+            "cookies, and derives user_agent from the browser version. "
+            "Firefox: all profiles are scanned. Chrome/Edge: the browser "
+            "must be closed for cookie decryption on Windows. x-bc is NOT "
+            "stored in any cookie — use the one-shot paste below for that."
+        ).classes("text-xs text-gray-400")
+
+    with ui.card().classes("w-full"):
+        ui.label("One-shot paste (captures x-bc too)").classes("text-lg font-semibold")
+        paste_box = ui.textarea(
+            "Paste anything here: the M-rcus OnlyFans-Cookie-Helper "
+            "extension output, an UltimaScraper-style auth.json, a raw "
+            "cookie header, or loose 'sess=...' text",
+            placeholder='{"auth": {"cookie": "auth_id=...; sess=...", "x_bc": "...", "user_agent": "..."}}',
+        ).classes("w-full font-mono")
+        with ui.row().classes("w-full items-center"):
+            paste_label = ui.label("").classes("text-sm text-gray-400")
+            ui.space()
+            ui.button(
+                "Fill all fields from paste",
+                color="primary",
+                on_click=lambda: _fill_from_paste(paste_box, paste_label),
+            )
+        ui.label(
+            "Recommended: install the 'OnlyFans Cookie-Helper' extension in "
+            "your browser (by M-rcus), open onlyfans.com, click the "
+            "extension, and copy everything it shows into the box above — "
+            "it includes the x-bc and user-agent that no cookie import can "
+            "recover."
         ).classes("text-xs text-gray-400")
 
     with ui.row().classes("w-full"):
@@ -246,6 +272,109 @@ def _browser_cookies(browser_name: str) -> dict:
     return {cookie.name: cookie.value or "" for cookie in jar}
 
 
+def _fill_from_paste(paste_box, paste_label):
+    """Fill all five auth fields from one paste.
+
+    Accepts (via auth_schema's own accessors, utils/auth/data.py):
+    - Cookie-Helper extension JSON: {"auth": {"cookie": "...", "x_bc": ...}}
+    - UltimaScraper-style auth.json (same shape)
+    - flat {"sess": ..., "x-bc": ...} dicts
+    - bare cookie headers: 'auth_id=...; sess=...'
+    """
+    import json as _json
+
+    from ofscraper.gui.state import get_state
+
+    text = (paste_box.value or "").strip()
+    if not text:
+        paste_label.set_text("nothing pasted yet")
+        return
+
+    source = None
+    try:
+        parsed = _json.loads(text)
+        if isinstance(parsed, dict):
+            source = parsed.get("auth") if isinstance(parsed.get("auth"), dict) else parsed
+    except Exception:
+        source = None
+
+    if source is None:
+        # bare cookie string ('a=b; c=d') — and maybe stray key=value lines
+        pairs = _parse_cookie_header(text)
+        source = pairs if pairs.get("sess") or pairs.get("auth_id") else None
+
+    state = get_state()
+    if source is None:
+        paste_label.set_text(
+            "could not parse the paste — expected JSON, or 'name=value; …' text"
+        )
+        ui.notify("Paste not recognized", type="warning")
+        return
+
+    try:
+        import ofscraper.utils.auth.schema as auth_schema
+
+        normalized = auth_schema.auth_schema(source)
+    except Exception as E:
+        paste_label.set_text(f"parse failed: {E}")
+        ui.notify(f"Could not build auth from paste: {E}", type="negative")
+        return
+
+    filled = {
+        k: v
+        for k, v in normalized.items()
+        if v and k in FIELDS
+    }
+    if not filled.get("sess"):
+        paste_label.set_text("paste parsed, but no sess found in it")
+        ui.notify("No sess in the pasted data", type="warning")
+        return
+
+    if filled.get("x-bc"):
+        state.auth_fp_cookie = ""  # a real x-bc supersedes any fp note
+    state.auth_import_result = filled
+    state.auth_import_message = (
+        f"filled {len(filled)} field(s) from paste"
+        + (
+            ""
+            if filled.get("x-bc") and filled.get("user_agent")
+            else " — some fields still missing (x-bc/user_agent)"
+        )
+    )
+    state.auth_import_version += 1
+    paste_label.set_text(state.auth_import_message)
+
+
+def _firefox_user_agent() -> str:
+    """Derive the canonical Firefox UA from the profile's compatibility.ini."""
+    import configparser
+    import os
+
+    base = os.path.join(os.environ.get("APPDATA", ""), "Mozilla", "Firefox")
+    parser = configparser.ConfigParser()
+    parser.read(os.path.join(base, "profiles.ini"))
+    for section in parser.sections():
+        if not section.startswith("Profile"):
+            continue
+        path = parser.get(section, "path", fallback="")
+        full = path if os.path.isabs(path) else os.path.join(base, path)
+        compat = os.path.join(full, "compatibility.ini")
+        if os.path.exists(compat):
+            cp = configparser.ConfigParser()
+            cp.read(compat)
+            last = cp.get("Compatibility", "LastVersion", fallback="")
+            # e.g. 153.0.3_20260803132010/... -> major.minor
+            version = last.split("_")[0]
+            parts = version.split(".")
+            if len(parts) >= 2 and parts[0].isdigit():
+                major = parts[0]
+                return (
+                    f"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{major}.0) "
+                    f"Gecko/20100101 Firefox/{major}.0"
+                )
+    return ""
+
+
 def _import_browser(browser_name, inputs, label):
     def work():
         try:
@@ -260,15 +389,21 @@ def _import_browser(browser_name, inputs, label):
                     "auth_uid": auth_uid,
                 }
                 message = (
-                    "cookies imported — now paste x-bc and user_agent from "
-                    "a Network-tab request (x-bc is a REQUEST HEADER, never "
-                    "a cookie)"
+                    "cookies imported — x-bc still needed: use one-shot "
+                    "paste below (Cookie-Helper extension) or a Network-tab "
+                    "request header"
                 )
                 from ofscraper.gui.state import get_state
 
+                state = get_state()
                 # remember the fp cookie so Save can catch the classic
                 # fp-pasted-as-x-bc mistake
-                get_state().auth_fp_cookie = cookies.get("fp", "")
+                state.auth_fp_cookie = cookies.get("fp", "")
+                if browser_name.lower().startswith("firefox"):
+                    ua = _firefox_user_agent()
+                    if ua:
+                        result["user_agent"] = ua
+                        message += "; user_agent derived from your Firefox"
             elif cookies:
                 result = {}
                 message = (
