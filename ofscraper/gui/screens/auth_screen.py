@@ -100,13 +100,15 @@ def render(nav):
         nonlocal last_applied, last_status
         if state.auth_import_version != last_applied:
             last_applied = state.auth_import_version
-            for field, value in state.auth_import_result.items():
+            result = state.auth_import_result
+            for field, value in result.items():
                 if field in inputs:
                     inputs[field].set_value(value)
             import_label.set_text(state.auth_import_message)
-            if state.auth_import_result:
+            if result and _looks_logged_in(result.get("sess", "")):
                 ui.notify(state.auth_import_message, type="positive")
             else:
+                # visitor-only import or outright failure — never celebrate
                 ui.notify(state.auth_import_message, type="warning")
         if state.auth_status_version != last_status:
             last_status = state.auth_status_version
@@ -242,12 +244,16 @@ def _import_browser(browser_name, inputs, label):
                     "auth_id": auth_id,
                     "auth_uid": auth_uid,
                 }
-                message = "cookies imported — now paste x-bc and user_agent"
-                if not _looks_logged_in(sess):
-                    message += (
-                        " (this sess is shorter than the classic format — if "
-                        "Check status fails after saving, log out and back "
-                        "into onlyfans.com, then re-import)"
+                if _looks_logged_in(sess):
+                    message = "cookies imported — now paste x-bc and user_agent"
+                else:
+                    message = (
+                        "Imported only visitor cookies — Firefox is running "
+                        "and your login session lives in its memory. To get "
+                        "the real sess: in Firefox press F12 → Storage "
+                        "(tab) → Cookies → onlyfans.com → copy the LONG "
+                        "value of 'sess' and paste it into the sess field "
+                        "here, then Save."
                     )
             elif cookies:
                 result = {}
@@ -274,8 +280,33 @@ def _import_browser(browser_name, inputs, label):
     threading.Thread(target=work, name="gui-cookie-import", daemon=True).start()
 
 
+def _parse_cookie_header(raw: str) -> dict:
+    """If someone pasted a full cookie header, split it into name/value pairs."""
+    raw = raw or ""
+    if "=" not in raw or ";" not in raw:
+        return {}
+    out = {}
+    for part in raw.split(";"):
+        if "=" in part:
+            key, _, value = part.partition("=")
+            key = key.strip()
+            if key and key not in out:
+                out[key] = value.strip()
+    return out
+
+
 def _save(inputs):
     auth = {field: _sanitize(inputs[field].value) for field in FIELDS}
+
+    # tolerate pasted forms like "sess=abc..." or a whole cookie header
+    pasted = _parse_cookie_header(auth.get("sess", ""))
+    if pasted:
+        for key in FIELDS + ("auth_uid_",):
+            if pasted.get(key):
+                auth[key] = pasted[key]
+    if auth.get("sess", "").startswith("sess="):
+        auth["sess"] = auth["sess"][len("sess="):]
+
     # keep the legacy alias some code paths look for
     auth["auth_uid_"] = auth["auth_uid"]
 

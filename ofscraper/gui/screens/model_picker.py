@@ -124,8 +124,22 @@ def render(nav):
                 if state.models and not state.models_fetch_error
                 else "fetch failed"
             )
-        error_label.set_text(state.models_fetch_error)
-        error_label.set_visibility(bool(state.models_fetch_error))
+        error = state.models_fetch_error
+        if error:
+            friendly = error
+            lowered = error.lower()
+            if "400" in error or "401" in error or "403" in error or "down" in lowered:
+                friendly = (
+                    "OnlyFans rejected the login — go to the Auth screen, "
+                    "press Check status, and re-save working credentials. "
+                    f"(detail: {error[:160]})"
+                )
+            elif "timed out" in lowered or "timeout" in lowered:
+                friendly = f"Request timed out — retry. (detail: {error[:160]})"
+            error_label.set_text(friendly)
+        else:
+            error_label.set_text("")
+        error_label.set_visibility(bool(error))
 
     poll()
     ui.timer(0.5, poll)
