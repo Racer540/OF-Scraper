@@ -64,6 +64,13 @@ class GuiState:
         self.merge_error = ""
         self.merge_finished_at = None
 
+        # --- auth import + status (worker -> UI handoff) ---------------------
+        self.auth_import_result = {}
+        self.auth_import_message = ""
+        self.auth_import_version = 0
+        self.auth_status_message = ""
+        self.auth_status_version = 0
+
         # --- log bridge ------------------------------------------------------
         self.log_buffer = LogBuffer()
 

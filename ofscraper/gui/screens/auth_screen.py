@@ -74,7 +74,7 @@ def render(nav):
     with ui.card().classes("w-full"):
         ui.label("Import cookies from browser").classes("text-lg font-semibold")
         with ui.row().classes("w-full items-center"):
-            browser = ui.select({b: b.capitalize() for b in BROWSERS}, value="chrome").classes("w-40")
+            browser = ui.select({b: b.capitalize() for b in BROWSERS}, value="firefox").classes("w-40")
             import_label = ui.label("").classes("text-sm text-gray-400")
             ui.button(
                 "Import",
@@ -82,53 +82,184 @@ def render(nav):
             )
         ui.label(
             "Fills sess / auth_id / auth_uid from your browser's onlyfans "
-            "cookies. Your browser must be closed for cookie decryption on "
-            "Windows (Chrome/Edge)."
+            "cookies. Firefox: all profiles are scanned. Chrome/Edge: the "
+            "browser must be closed for cookie decryption on Windows."
         ).classes("text-xs text-gray-400")
 
     with ui.row().classes("w-full"):
         ui.button("Save auth", color="positive", on_click=lambda: _save(inputs))
 
+    # apply worker-thread import results on the UI thread
+    from ofscraper.gui.state import get_state
+
+    state = get_state()
+    last_applied = state.auth_import_version
+    last_status = state.auth_status_version
+
+    def poll_import():
+        nonlocal last_applied, last_status
+        if state.auth_import_version != last_applied:
+            last_applied = state.auth_import_version
+            for field, value in state.auth_import_result.items():
+                if field in inputs:
+                    inputs[field].set_value(value)
+            import_label.set_text(state.auth_import_message)
+            if state.auth_import_result:
+                ui.notify(state.auth_import_message, type="positive")
+            else:
+                ui.notify(state.auth_import_message, type="warning")
+        if state.auth_status_version != last_status:
+            last_status = state.auth_status_version
+            status_label.set_text(state.auth_status_message)
+
+    ui.timer(0.25, poll_import)
+
 
 def _check(status_label):
     def work():
+        from ofscraper.gui.state import get_state
+
         try:
             import ofscraper.data.api.init as init
 
             result = init.getstatus()
         except Exception as E:
             result = f"error: {E}"
-        status_label.text = f"Auth status: {result}"
+        state = get_state()
+        state.auth_status_message = f"Auth status: {result}"
+        state.auth_status_version += 1
 
     threading.Thread(target=work, name="gui-auth-status", daemon=True).start()
+
+
+def _read_firefox_cookie_db(db_path: str, domain: str = "onlyfans") -> dict:
+    """Read one Firefox profile's cookies.sqlite (copied to temp to dodge locks)."""
+    import os
+    import shutil
+    import sqlite3
+    import tempfile
+
+    tmp = os.path.join(tempfile.gettempdir(), f"ofscraper_gui_{os.getpid()}_cookies.sqlite")
+    shutil.copy2(db_path, tmp)
+    wal = db_path + "-wal"
+    if os.path.exists(wal):
+        shutil.copy2(wal, tmp + "-wal")
+    cookies = {}
+    try:
+        con = sqlite3.connect(tmp)
+        try:
+            rows = con.execute(
+                "SELECT name, value, host FROM moz_cookies WHERE host LIKE ?",
+                (f"%{domain}%",),
+            ).fetchall()
+        finally:
+            con.close()
+        for name, value, host in rows:
+            # host-only cookies win over dot-domain duplicates
+            if name not in cookies or (host or "").startswith(domain):
+                cookies[name] = value or ""
+    finally:
+        for path in (tmp, tmp + "-wal", tmp + "-shm"):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    return cookies
+
+
+def _firefox_cookies() -> dict:
+    """Collect onlyfans cookies from EVERY Firefox profile.
+
+    browser_cookie3.firefox() trusts the profile flagged Default=1 in
+    profiles.ini, which is routinely stale on Windows (the Install section
+    names a different, newer profile) — so it reads a dead profile and finds
+    no login. Scanning all profiles and preferring any that carry a `sess`
+    cookie fixes that.
+    """
+    import configparser
+    import os
+
+    base = os.path.join(os.environ.get("APPDATA", ""), "Mozilla", "Firefox")
+    ini = os.path.join(base, "profiles.ini")
+    dbs = []
+    if os.path.exists(ini):
+        parser = configparser.ConfigParser()
+        parser.read(ini)
+        for section in parser.sections():
+            if not section.startswith("Profile"):
+                continue
+            path = parser.get(section, "path", fallback="")
+            if not path:
+                continue
+            full = path if os.path.isabs(path) else os.path.join(base, path)
+            db = os.path.join(full, "cookies.sqlite")
+            if os.path.exists(db):
+                dbs.append(db)
+    if not dbs:
+        raise RuntimeError(
+            "no Firefox cookie databases found — is Firefox installed?"
+        )
+
+    merged = {}
+    logged_in = {}
+    for db in dbs:
+        cookies = _read_firefox_cookie_db(db)
+        merged.update(cookies)
+        if cookies.get("sess"):
+            logged_in.update(cookies)
+    return logged_in or merged
+
+
+def _browser_cookies(browser_name: str) -> dict:
+    if browser_name.lower() in {"firefox", "firefox-esr"}:
+        return _firefox_cookies()
+    import browser_cookie3
+
+    jar = getattr(browser_cookie3, browser_name.lower())(domain_name="onlyfans")
+    return {cookie.name: cookie.value or "" for cookie in jar}
+
+
+def _looks_logged_in(sess: str) -> bool:
+    """A logged-in OF sess is URL-encoded JSON (%7B%22auth_id...) and long;
+    anonymous visits leave a short random marker instead."""
+    return bool(sess) and (sess.startswith("%7B") or len(sess) > 100)
 
 
 def _import_browser(browser_name, inputs, label):
     def work():
         try:
-            import browser_cookie3
-            import requests
-
-            jar = getattr(browser_cookie3, browser_name.lower())(
-                domain_name="onlyfans"
-            )
-            cookies = requests.utils.dict_from_cookiejar(jar)
+            cookies = _browser_cookies(browser_name)
             sess = cookies.get("sess", "")
             auth_id = cookies.get("auth_id", "")
             auth_uid = cookies.get("auth_uid_", "0")
-            filled = bool(sess and auth_id)
-            # UI element updates must happen on the NiceGUI thread; use the
-            # element's own set_text/set_value which push updates async-safe
-            inputs["sess"].set_value(sess)
-            inputs["auth_id"].set_value(auth_id)
-            inputs["auth_uid"].set_value(auth_uid)
-            label.set_text(
-                "cookies imported — now paste x-bc and user_agent"
-                if filled
-                else "no onlyfans cookies found in that browser"
-            )
+            if _looks_logged_in(sess) and auth_id:
+                result = {
+                    "sess": sess,
+                    "auth_id": auth_id,
+                    "auth_uid": auth_uid,
+                }
+                message = "cookies imported — now paste x-bc and user_agent"
+            elif cookies:
+                result = {}
+                message = (
+                    "onlyfans.com cookies were found, but there is no active "
+                    "login session — log into onlyfans.com in that browser "
+                    "(a normal window, not private/container) and retry"
+                )
+            else:
+                result = {}
+                message = "no onlyfans cookies found in that browser"
         except Exception as E:
-            label.set_text(f"import failed: {E}")
+            result = {}
+            message = f"import failed: {type(E).__name__}: {E}"
+        # hand off to the UI thread via the state poll below — direct element
+        # updates from a worker can die silently and swallow the error
+        from ofscraper.gui.state import get_state
+
+        state = get_state()
+        state.auth_import_result = result
+        state.auth_import_message = message
+        state.auth_import_version += 1
 
     threading.Thread(target=work, name="gui-cookie-import", daemon=True).start()
 
