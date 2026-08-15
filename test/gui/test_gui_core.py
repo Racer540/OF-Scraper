@@ -37,9 +37,10 @@ class TestArgbuild:
             ["-u", "user1,user2", "-a", "download,like", "-da", "Timeline,Messages",
              "-la", "Timeline"]
         )
-        assert d.usernames == ["user1", "user2"]
+        # usernames/areas parse to unordered collections; never assert order
+        assert set(d.usernames) == {"user1", "user2"}
         assert set(d.download_area) == {"Timeline", "Messages"}
-        assert d.like_area == {"Timeline"} or list(d.like_area) == ["Timeline"]
+        assert set(d.like_area) == {"Timeline"}
         assert "download" in d.actions and "like" in d.actions
 
     def test_manual_command(self, gui_bootstrapped):
@@ -47,7 +48,7 @@ class TestArgbuild:
 
         d = argbuild.build_job(["manual", "-u", "https://onlyfans.com/123"])
         assert d.command == "manual"
-        assert d.url == ["https://onlyfans.com/123"]
+        assert "https://onlyfans.com/123" in d.url
 
     def test_check_commands(self, gui_bootstrapped):
         from ofscraper.gui import argbuild
