@@ -33,7 +33,9 @@ def placeholder(title: str):
 
 
 # --- built screens ---------------------------------------------------------
+from ofscraper.gui.screens import auth_screen  # noqa: E402,F401
 from ofscraper.gui.screens import check  # noqa: E402,F401
+from ofscraper.gui.screens import config_screen  # noqa: E402,F401
 from ofscraper.gui.screens import db_viewer  # noqa: E402,F401
 from ofscraper.gui.screens import home  # noqa: E402,F401
 from ofscraper.gui.screens import job  # noqa: E402,F401
@@ -41,13 +43,8 @@ from ofscraper.gui.screens import manual  # noqa: E402,F401
 from ofscraper.gui.screens import merge  # noqa: E402,F401
 from ofscraper.gui.screens import metadata_screen  # noqa: E402,F401
 from ofscraper.gui.screens import model_picker  # noqa: E402,F401
+from ofscraper.gui.screens import profiles  # noqa: E402,F401
 from ofscraper.gui.screens import scrape  # noqa: E402,F401
-
-
-# --- placeholders (replaced as phases land) --------------------------------
-placeholder("Auth")
-placeholder("Config")
-placeholder("Profiles")
 
 
 def check_group(label: str, options: list, default: list | None = None):
