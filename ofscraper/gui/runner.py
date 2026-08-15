@@ -54,6 +54,12 @@ class JobRunner:
             # Clear leftover selection queues so the 'reset username' prompt
             # can never fire between jobs (managers/model.py:93-105).
             manager.current_model_manager.clear_all_queue()
+            # Reset check-command handoff so a stale ready flag from a
+            # previous run can't leak into this one.
+            state.check_rows_ready.clear()
+            state.check_finished.clear()
+            state.check_rows = []
+            state.check_row_states = {}
             log.info(f"Starting job: {description or ' '.join(argv)}")
             manager.pick()
             state.finish_job(result="Job finished")

@@ -197,11 +197,100 @@ def _uninstall_cancel_hooks():
     _install_cancel_hooks.pairs = []
 
 
+def _install_check_shim():
+    """Divert the check commands' Textual table to the GUI.
+
+    The check pipeline (commands/check.py) ends in thread_starters(): it
+    starts a process_download_queue consumer thread against
+    classes/table/app.py:row_queue and then runs the Textual InputApp, which
+    blocks until the user finishes selecting/downloading.
+
+    The shim: (a) starts the consumer exactly once per process (repeated
+    checks in one GUI session would otherwise stack consumers on the shared
+    queue and double-download), (b) hands the ROWS list to GuiState and
+    signals the screen, (c) blocks on the check_finished event instead of
+    running Textual — the job thread unwinds when the user clicks Finish.
+
+    The InputApp instance on the table module is swapped for GuiCheckApp so
+    _process_user_batch's app.app.update_cell_state(...) calls land in GUI
+    state (matching InputApp.update_cell_state semantics, app.py:421-431).
+    The real row_queue is untouched and shared with the consumer.
+    """
+    import threading
+
+    import ofscraper.classes.table.app as table_app
+    import ofscraper.commands.check as check
+
+    class GuiCheckApp:
+        def __init__(self):
+            self.table_data = []
+
+        def __call__(self, table_data=None, *args, **kwargs):
+            self.table_data = table_data or []
+
+        def update_cell_state(self, row_key, new_state, style="white"):
+            state = get_state()
+            for row in self.table_data:
+                if str(row.get("index")) == str(row_key):
+                    row["download_cart"] = new_state
+                    if new_state in {"[downloaded]", "[skipped]"}:
+                        row["downloaded"] = True
+                    break
+            state.check_row_states[str(row_key)] = new_state
+            state.check_version += 1
+
+    def gui_thread_starters(ROWS_):
+        state = get_state()
+        if not getattr(gui_thread_starters, "consumer_started", False):
+            threading.Thread(
+                target=check.process_download_queue,
+                name="gui-check-consumer",
+                daemon=True,
+            ).start()
+            gui_thread_starters.consumer_started = True
+
+        table_app.app(table_data=ROWS_)
+        state.check_rows = list(ROWS_ or [])
+        state.check_row_states = {}
+        state.check_version += 1
+        state.check_finished.clear()
+        state.check_rows_ready.set()
+        log.info(
+            f"Check results ready: {len(state.check_rows)} rows — "
+            "select and download, then press Finish"
+        )
+        # interruptible wait: Cancel must be able to break out (no progress
+        # updates happen while blocked here, so the cancel hooks can't fire)
+        while not state.check_finished.wait(timeout=0.5):
+            if state.cancel_event.is_set():
+                break
+
+    _install_check_shim.saved = (
+        table_app.app,
+        getattr(check, "thread_starters", None),
+    )
+    table_app.app = GuiCheckApp()
+    check.thread_starters = gui_thread_starters
+
+
+def _uninstall_check_shim():
+    import ofscraper.classes.table.app as table_app
+    import ofscraper.commands.check as check
+
+    saved = getattr(_install_check_shim, "saved", None)
+    if saved:
+        table_app.app, original_starters = saved
+        if original_starters is not None:
+            check.thread_starters = original_starters
+        _install_check_shim.saved = None
+
+
 def install():
     _install_prompt_guard()
     _install_auth_guard()
     _install_signal_tolerance()
     _install_cancel_hooks()
+    _install_check_shim()
     log.info("GUI patches installed")
 
 
@@ -210,3 +299,4 @@ def uninstall():
     _uninstall_auth_guard()
     _uninstall_signal_tolerance()
     _uninstall_cancel_hooks()
+    _uninstall_check_shim()
