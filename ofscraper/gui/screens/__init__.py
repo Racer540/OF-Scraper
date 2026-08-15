@@ -35,11 +35,11 @@ def placeholder(title: str):
 # --- built screens ---------------------------------------------------------
 from ofscraper.gui.screens import home  # noqa: E402,F401
 from ofscraper.gui.screens import job  # noqa: E402,F401
+from ofscraper.gui.screens import model_picker  # noqa: E402,F401
+from ofscraper.gui.screens import scrape  # noqa: E402,F401
 
 
 # --- placeholders (replaced as phases land) --------------------------------
-placeholder("Models")
-placeholder("Scrape")
 placeholder("Manual")
 placeholder("Metadata")
 placeholder("Checks")
@@ -48,6 +48,20 @@ placeholder("Merge")
 placeholder("Auth")
 placeholder("Config")
 placeholder("Profiles")
+
+
+def check_group(label: str, options: list, default: list | None = None):
+    """Render a labeled checkbox group; return a callable for selected values.
+
+    NiceGUI 3 has no checkbox_group widget, so this composes plain checkboxes.
+    """
+    with ui.element("div").classes("grow"):
+        ui.label(label).classes("text-sm font-semibold")
+        boxes = {}
+        with ui.row().classes("wrap gap-2"):
+            for opt in options:
+                boxes[opt] = ui.checkbox(opt, value=opt in (default or []))
+    return lambda: [opt for opt, box in boxes.items() if box.value]
 
 
 def run_button(argv, description: str, label: str = "Run"):

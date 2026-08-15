@@ -44,6 +44,8 @@ class GuiState:
         # --- cross-screen caches --------------------------------------------
         self.models = []  # cached Model objects from the model picker
         self.models_fetched_at = None
+        self.models_fetch_error = ""
+        self.selected_usernames = []  # names chosen in the model picker
 
         # --- check-command handoff (filled in by the check shim) ------------
         self.check_rows = []
