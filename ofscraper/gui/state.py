@@ -54,6 +54,16 @@ class GuiState:
         self.check_row_states = {}  # index -> (state, style), updated by shim
         self.check_version = 0
 
+        # --- db viewer -------------------------------------------------------
+        self.db_rows = []
+        self.db_loaded_at = None
+        self.db_load_error = ""
+
+        # --- merge -----------------------------------------------------------
+        self.merge_result = ""
+        self.merge_error = ""
+        self.merge_finished_at = None
+
         # --- log bridge ------------------------------------------------------
         self.log_buffer = LogBuffer()
 
