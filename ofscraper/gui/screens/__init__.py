@@ -35,13 +35,13 @@ def placeholder(title: str):
 # --- built screens ---------------------------------------------------------
 from ofscraper.gui.screens import home  # noqa: E402,F401
 from ofscraper.gui.screens import job  # noqa: E402,F401
+from ofscraper.gui.screens import manual  # noqa: E402,F401
+from ofscraper.gui.screens import metadata_screen  # noqa: E402,F401
 from ofscraper.gui.screens import model_picker  # noqa: E402,F401
 from ofscraper.gui.screens import scrape  # noqa: E402,F401
 
 
 # --- placeholders (replaced as phases land) --------------------------------
-placeholder("Manual")
-placeholder("Metadata")
 placeholder("Checks")
 placeholder("DB Viewer")
 placeholder("Merge")
