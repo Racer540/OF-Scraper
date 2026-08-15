@@ -220,8 +220,12 @@ def _browser_cookies(browser_name: str) -> dict:
 
 
 def _looks_logged_in(sess: str) -> bool:
-    """A logged-in OF sess is URL-encoded JSON (%7B%22auth_id...) and long;
-    anonymous visits leave a short random marker instead."""
+    """Best-effort format check for advisory messaging only.
+
+    The classic logged-in OF sess is URL-encoded JSON (%7B%22auth_id...) and
+    long; the current site also issues shorter opaque tokens, so this must
+    NEVER gate the import — only annotate it.
+    """
     return bool(sess) and (sess.startswith("%7B") or len(sess) > 100)
 
 
@@ -232,19 +236,25 @@ def _import_browser(browser_name, inputs, label):
             sess = cookies.get("sess", "")
             auth_id = cookies.get("auth_id", "")
             auth_uid = cookies.get("auth_uid_", "0")
-            if _looks_logged_in(sess) and auth_id:
+            if sess and auth_id:
                 result = {
                     "sess": sess,
                     "auth_id": auth_id,
                     "auth_uid": auth_uid,
                 }
                 message = "cookies imported — now paste x-bc and user_agent"
+                if not _looks_logged_in(sess):
+                    message += (
+                        " (this sess is shorter than the classic format — if "
+                        "Check status fails after saving, log out and back "
+                        "into onlyfans.com, then re-import)"
+                    )
             elif cookies:
                 result = {}
                 message = (
-                    "onlyfans.com cookies were found, but there is no active "
-                    "login session — log into onlyfans.com in that browser "
-                    "(a normal window, not private/container) and retry"
+                    "found onlyfans cookies but no sess/auth_id pair — log "
+                    "into onlyfans.com in that browser (a normal window, not "
+                    "private/container) and retry"
                 )
             else:
                 result = {}
