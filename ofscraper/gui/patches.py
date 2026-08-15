@@ -136,12 +136,16 @@ def _install_signal_tolerance():
         try:
             return original_enter(self)
         except ValueError:  # signal only works in main thread
+            # leave _old_signal_handler_map unset; safe_exit tolerates it
             return None
 
     def safe_exit(self, *exc):
         try:
             return original_exit(self, *exc)
-        except ValueError:
+        except (ValueError, AttributeError, TypeError):
+            # ValueError: signal calls off the main thread.
+            # AttributeError: __enter__ bailed before the handler map was
+            # built, so the original __exit__ has nothing to iterate.
             return False
 
     _install_signal_tolerance.pair = (original_enter, original_exit)

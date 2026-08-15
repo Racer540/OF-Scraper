@@ -17,11 +17,16 @@ except Exception as e:
     print(f"⚠️ WARNING: Could not find ffmpeg binary; it will not be bundled. Error: {e}")
     ffmpeg_binary_tuple = None
 
+# --- NiceGUI static assets (required for the GUI; PyInstaller misses them) ---
+from PyInstaller.utils.hooks import collect_data_files
+
+nicegui_datas = collect_data_files('nicegui')
+
 a = Analysis(
     [os.path.join(project_root, 'ofscraper', '__main__.py')],
     pathex=[project_root],
     binaries=[ffmpeg_binary_tuple] if ffmpeg_binary_tuple else [],
-    datas=[],
+    datas=nicegui_datas,
     hiddenimports=['diskcache'],
     hookspath=[],
     hooksconfig={},

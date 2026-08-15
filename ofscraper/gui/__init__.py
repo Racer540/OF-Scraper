@@ -13,11 +13,17 @@ GUI package (NiceGUI native window).
 
 # GUI mode never consumes CLI arguments (each screen builds its own argv via
 # ofscraper.gui.argbuild), and the first lazy retriveArgs() during import
-# parses the real sys.argv -- '--gui' would crash it.  Neutralize argv BEFORE
+# parses the real sys.argv -- '--gui' (or pytest's own arguments, when the
+# test suite imports this package) would crash it.  Neutralize argv BEFORE
 # the import chain below starts.
+import os as _os
 import sys as _sys
 
-if any(flag in _sys.argv[1:] for flag in ("--gui", "-g")):
+_running_pytest = (
+    "PYTEST_CURRENT_TEST" in _os.environ
+    or "pytest" in _os.path.basename(_sys.argv[0] or "").lower()
+)
+if _running_pytest or any(flag in _sys.argv[1:] for flag in ("--gui", "-g")):
     _sys.argv = [_sys.argv[0]]
 
 # The console/settings/config modules form an import cycle that only resolves
