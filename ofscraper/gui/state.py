@@ -72,6 +72,14 @@ class GuiState:
         self.auth_status_version = 0
         self.auth_fp_cookie = ""  # to catch fp-pasted-as-x-bc on save
 
+        # --- auth state (written by gui/authstatus.py worker) ----------------
+        # auth.json never stores the account username, so the logged-in name
+        # only exists after a live /users/me check lands here.
+        self.auth_ok = None  # None = never checked, True/False after
+        self.auth_username = ""
+        self.auth_checked_at = None
+        self.auth_checking = False
+
         # --- log bridge ------------------------------------------------------
         self.log_buffer = LogBuffer()
 

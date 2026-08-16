@@ -58,6 +58,17 @@ def _bootstrap():
     logger.add_widget(get_state().log_buffer)
     log.info("GUI bootstrap complete")
 
+    # One auth check at startup so the header badge reflects the login
+    # without waiting for a manual check on the Home/Auth screen.  Skipped
+    # under pytest (tests import this bootstrap via their fixture and must
+    # not fire live requests).
+    import sys as _sys
+
+    if "pytest" not in _sys.modules:
+        from ofscraper.gui.authstatus import start_auth_check
+
+        start_auth_check()
+
 
 def _fast_shutdown():
     """Close executor/cache without exit_manager.shutdown()'s 3 s sleep."""
@@ -102,14 +113,27 @@ def _build_ui():
             from ofscraper.gui.state import get_state
 
             state = get_state()
-            if state.status.value == "idle":
-                status_badge.text = "idle"
-                status_badge._props["color"] = "grey"
-            else:
+            if state.job_running:
                 status_badge.text = state.status.value
                 status_badge._props["color"] = (
                     "orange" if state.status.value == "cancelling" else "green"
                 )
+            elif state.auth_checking:
+                status_badge.text = "checking auth…"
+                status_badge._props["color"] = "grey"
+            elif state.auth_ok is True:
+                status_badge.text = (
+                    f"authed as {state.auth_username}"
+                    if state.auth_username
+                    else "authed"
+                )
+                status_badge._props["color"] = "green"
+            elif state.auth_ok is False:
+                status_badge.text = "not authed"
+                status_badge._props["color"] = "red"
+            else:
+                status_badge.text = "idle"
+                status_badge._props["color"] = "grey"
             status_badge.update()
 
         ui.timer(1.0, refresh_badge)

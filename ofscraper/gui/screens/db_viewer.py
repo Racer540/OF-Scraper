@@ -8,6 +8,7 @@ CLI's print step sits on top of (commands/db.py:47-52). The filtered/sorted
 list lands in db_manager.media; write_to_csv() honors args.export.
 """
 
+import pathlib
 import threading
 import time
 
@@ -51,6 +52,34 @@ def _load_table(model_name, model_id, argv, after):
             from ofscraper.gui import argbuild
 
             argbuild.build_job(argv)  # settings only; we do not run the job
+
+            # The CLI db() entrypoint calls actions.select_areas() before
+            # touching DBManager — that is the step which resolves args.posts
+            # (-o) into args.download_area.  Without it, DBManager.get_all_media
+            # dies with 'TypeError: argument of type NoneType is not iterable'.
+            import ofscraper.utils.args.accessors.areas as areas
+            import ofscraper.utils.settings as settings
+
+            args = settings.get_args()
+            args.download_area = areas.get_download_area()
+            settings.update_args(args)
+
+            # A model that was never scraped has no user_data.db; the sqlite
+            # layer would create an empty one, fail on the missing table and
+            # tenacity-retry for ~30s before surfacing that.  Pre-check.
+            import ofscraper.classes.placeholder as placeholder
+
+            db_path = pathlib.Path(
+                placeholder.databasePlaceholder().databasePathHelper(
+                    model_id, model_name
+                )
+            )
+            if not db_path.exists():
+                raise FileNotFoundError(
+                    f"No local database for {model_name} yet — run a "
+                    "download or metadata job for this model first"
+                )
+
             import ofscraper.commands.db as db_commands
 
             manager_obj = db_commands.DBManager(model_name, model_id)
@@ -82,13 +111,19 @@ def render(nav):
     with ui.card().classes("w-full"):
         with ui.row().classes("w-full items-center"):
             model_select = ui.select(
-                {m.name: m.name for m in state.models} or {"": "— refresh models first —"},
+                {m.name: m.name for m in state.models}
+                or {"": "— fetching model list… —"},
                 value=(state.models[0].name if state.models else None),
                 label="Model",
             ).classes("w-72")
-            ui.button("Refresh models", on_click=lambda: nav("Models")).props(
-                "outline"
-            )
+            # The Models screen is the primary fetch surface, but the DB
+            # Viewer must not dead-end on an empty cache — pull the list
+            # ourselves the first time.
+            from ofscraper.gui.screens.model_picker import fetch_models
+
+            if not state.models:
+                fetch_models()
+            ui.button("Refresh models", on_click=fetch_models).props("outline")
         areas = screens.check_group(
             "Areas", DB_AREAS, default=["Timeline", "Messages"]
         )
@@ -121,9 +156,15 @@ def render(nav):
         with ui.row().classes("w-full items-center"):
             status_label = ui.label("no table loaded").classes("text-sm text-gray-400")
             ui.space()
-            ui.button(
-                "Load table",
-                on_click=lambda: _load_table(
+
+            def load_click():
+                if not model_select.value:
+                    ui.notify(
+                        "Pick a model first (wait for the list to load)",
+                        type="warning",
+                    )
+                    return
+                _load_table(
                     model_select.value,
                     _model_id(model_select.value),
                     _build_argv(
@@ -131,8 +172,9 @@ def render(nav):
                         preview, protected, media_id, export_path,
                     ),
                     after=None,
-                ),
-            )
+                )
+
+            ui.button("Load table", on_click=load_click)
 
         table = ui.table(columns=RESULT_COLUMNS, rows=[], row_key="media_id").classes(
             "w-full"
@@ -142,9 +184,17 @@ def render(nav):
     error_label = ui.label(state.db_load_error).classes("text-sm text-red-500")
 
     last_rendered = state.db_loaded_at
+    models_rendered = state.models_fetched_at
 
     def poll():
-        nonlocal last_rendered
+        nonlocal last_rendered, models_rendered
+        if state.models_fetched_at and state.models_fetched_at != models_rendered:
+            models_rendered = state.models_fetched_at
+            if state.models:
+                model_select.options = {m.name: m.name for m in state.models}
+                if model_select.value not in model_select.options:
+                    model_select.value = state.models[0].name
+                model_select.update()
         if state.db_loaded_at and state.db_loaded_at != last_rendered:
             last_rendered = state.db_loaded_at
             table.rows = [

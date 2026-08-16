@@ -1,12 +1,11 @@
 """
 Home screen: dashboard with auth status, profile, job state, and navigation.
 
-Auth status is checked in a worker thread via `init.getstatus()` (the same
-call checkers.py uses) so the UI never blocks on the network.
+Auth status comes from the shared background check (gui/authstatus.py), the
+same worker that drives the header badge and the Auth screen.
 """
 
 import shlex
-import threading
 
 from nicegui import ui
 
@@ -33,29 +32,26 @@ def _profile_name() -> str:
 
 
 def _auth_file_summary() -> str:
+    """What auth.json actually contains.  It never stores a username — the
+    account name only exists after a live check (see refresh_auth below),
+    so this reports the auth_id instead of guessing "unknown user"."""
     try:
-        import ofscraper.utils.auth.file as auth_file
+        import ofscraper.utils.auth.utils.dict as auth_dict
 
-        auth = auth_file.read_auth()
+        auth = auth_dict.get_auth_dict() or {}
         if not auth:
-            return "no auth.json"
-        user = auth.get("username") or auth.get("auth_uid_") or "unknown user"
-        return f"saved as {user}"
-    except Exception as E:
-        return f"auth.json error: {E}"
-
-
-def _check_auth(status_label):
-    def work():
-        try:
-            import ofscraper.data.api.init as init
-
-            result = init.getstatus()
-        except Exception as E:
-            result = f"error: {E}"
-        status_label.text = f"Auth status: {result}"
-
-    threading.Thread(target=work, name="gui-auth-check", daemon=True).start()
+            return "auth.json: not saved yet — use the Auth screen"
+        notes = []
+        if auth.get("sess"):
+            notes.append("sess cookie saved")
+        auth_id = auth.get("auth_id") or auth.get("auth_uid_")
+        if auth_id:
+            notes.append(f"account id {auth_id}")
+        if not auth.get("x-bc"):
+            notes.append("x-bc missing")
+        return "auth.json: " + (", ".join(notes) or "file exists but is empty")
+    except Exception:
+        return "auth.json: not found — use the Auth screen"
 
 
 @screens.register("Home")
@@ -69,9 +65,16 @@ def render(nav):
     with ui.grid(columns=2).classes("w-full gap-4"):
         with ui.card().classes("min-w-0"):
             ui.label("Authentication").classes("text-xl font-semibold")
-            status_label = ui.label("Auth status: unknown")
+            login_label = ui.label("Login: unknown")
             ui.label(_auth_file_summary()).classes("text-sm text-gray-400")
-            ui.button("Check auth status", on_click=lambda: _check_auth(status_label))
+
+            def check_auth():
+                from ofscraper.gui.authstatus import start_auth_check
+
+                start_auth_check()
+                login_label.text = "checking… (can take ~30s)"
+
+            ui.button("Check auth status", on_click=check_auth)
 
         with ui.card().classes("min-w-0"):
             ui.label("Profile").classes("text-xl font-semibold")
@@ -95,6 +98,15 @@ def render(nav):
         suffix = f" — {state.job_result}" if state.job_result else ""
         error = f" (error: {state.job_error})" if state.job_error else ""
         job_status.text = f"Status: {status}{suffix}{error}"
+        if state.auth_checking:
+            login_label.text = "checking… (can take ~30s)"
+        elif state.auth_ok is True:
+            who = f" as {state.auth_username}" if state.auth_username else ""
+            login_label.text = f"Logged in{who}"
+        elif state.auth_ok is False:
+            login_label.text = "Not logged in — open the Auth screen"
+        else:
+            login_label.text = "Login: unknown — press Check auth status"
 
     refresh_job()
     ui.timer(1.0, refresh_job)

@@ -150,39 +150,16 @@ def render(nav):
 
 
 def _check(status_label, button):
-    """Check auth against the API. getstatus() retries internally and can
+    """Check auth against the API via the shared worker (gui/authstatus.py)
+    so the header badge and Home screen see the same result.  The check can
     take 30+ seconds — set immediate feedback so the button never looks
-    dead while that runs."""
-    import time as _time
+    dead while that runs; the poll below re-enables it when the result
+    lands."""
+    from ofscraper.gui.authstatus import start_auth_check
 
-    from ofscraper.gui.state import get_state
-
-    state = get_state()
     status_label.set_text("Auth status: checking… (can take ~30s)")
     button.set_enabled(False)
-    started = _time.time()
-
-    def work():
-        try:
-            import ofscraper.data.api.init as init
-
-            result = init.getstatus()
-        except Exception as E:
-            result = f"error: {E}"
-        elapsed = _time.time() - started
-        if result == "UP":
-            message = f"Auth status: UP ({elapsed:.0f}s) — you're logged in"
-        else:
-            message = (
-                f"Auth status: {result} ({elapsed:.0f}s) — most often the "
-                "x-bc header (must come from a Network-tab REQUEST header, "
-                "not a cookie) or a user_agent mismatch with the browser "
-                "the sess cookie came from"
-            )
-        state.auth_status_message = message
-        state.auth_status_version += 1
-
-    threading.Thread(target=work, name="gui-auth-status", daemon=True).start()
+    start_auth_check()
 
 
 def _read_firefox_cookie_db(db_path: str, domain: str = "onlyfans") -> dict:
@@ -494,7 +471,11 @@ def _save(inputs):
         with open(auth_file, "w") as f:
             f.write(json.dumps(normalized, indent=4))
         ui.notify(
-            f"Saved to {auth_file} — press 'Check status' to verify", type="positive"
+            f"Saved to {auth_file} — verifying against the API…", type="positive"
         )
+        # verify immediately: the header badge and Home screen follow along
+        from ofscraper.gui.authstatus import start_auth_check
+
+        start_auth_check()
     except Exception as E:
         ui.notify(f"Save failed: {E}", type="negative")
