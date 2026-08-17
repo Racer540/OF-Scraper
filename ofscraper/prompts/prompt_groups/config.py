@@ -567,6 +567,14 @@ def advanced_config() -> dict:
             },
             {
                 "type": "list",
+                "name": "restructure_downloads",
+                "message": "Move downloaded files into a changed folder layout?",
+                "option_instruction": "When dir_format changes, already-downloaded files are moved into the new structure instead of re-downloaded",
+                "default": data.get_restructure_downloads(),
+                "choices": [Choice(True, "Yes"), Choice(False, "No")],
+            },
+            {
+                "type": "list",
                 "name": "downloadbars",
                 "message": "show download progress bars\nThis can have a negative effect on performance with lower threads",
                 "default": data.get_show_downloadprogress(),

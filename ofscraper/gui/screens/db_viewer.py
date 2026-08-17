@@ -31,15 +31,27 @@ DB_AREAS = [
 
 DB_SORTS = ["posted", "created", "filename", "length", "postid", "mediaid", "size"]
 
+# All columns are client-side sortable (click the header).  `size` sorts on
+# the raw byte count while displaying the human-readable size via a slot;
+# media_id/post_id stay numeric so 1000 sorts after 999, and posted_at's
+# zero-padded YYYY-MM-DD HH:mm:ss format sorts correctly as text.
 RESULT_COLUMNS = [
-    {"name": "filename", "label": "Filename", "field": "filename", "align": "left"},
-    {"name": "mediatype", "label": "Type", "field": "mediatype", "align": "left"},
-    {"name": "posted_at", "label": "Posted", "field": "posted_at", "align": "left"},
-    {"name": "size_human", "label": "Size", "field": "size_human", "align": "left"},
-    {"name": "downloaded", "label": "Downloaded", "field": "downloaded", "align": "left"},
-    {"name": "unlocked", "label": "Unlocked", "field": "unlocked", "align": "left"},
-    {"name": "media_id", "label": "Media ID", "field": "media_id", "align": "left"},
-    {"name": "post_id", "label": "Post ID", "field": "post_id", "align": "left"},
+    {"name": "filename", "label": "Filename", "field": "filename",
+     "align": "left", "sortable": True},
+    {"name": "mediatype", "label": "Type", "field": "mediatype",
+     "align": "left", "sortable": True},
+    {"name": "posted_at", "label": "Posted", "field": "posted_at",
+     "align": "left", "sortable": True},
+    {"name": "size", "label": "Size", "field": "size",
+     "align": "left", "sortable": True},
+    {"name": "downloaded", "label": "Downloaded", "field": "downloaded",
+     "align": "left", "sortable": True},
+    {"name": "unlocked", "label": "Unlocked", "field": "unlocked",
+     "align": "left", "sortable": True},
+    {"name": "media_id", "label": "Media ID", "field": "media_id",
+     "align": "left", "sortable": True},
+    {"name": "post_id", "label": "Post ID", "field": "post_id",
+     "align": "left", "sortable": True},
 ]
 
 
@@ -117,12 +129,14 @@ def render(nav):
                 label="Model",
             ).classes("w-72")
             # The Models screen is the primary fetch surface, but the DB
-            # Viewer must not dead-end on an empty cache — pull the list
-            # ourselves the first time.
-            from ofscraper.gui.screens.model_picker import fetch_models
+            # Viewer must not dead-end on an empty cache — hydrate from the
+            # persisted list (and refresh it in the background if stale).
+            from ofscraper.gui.screens.model_picker import (
+                ensure_models,
+                fetch_models,
+            )
 
-            if not state.models:
-                fetch_models()
+            ensure_models()
             ui.button("Refresh models", on_click=fetch_models).props("outline")
         areas = screens.check_group(
             "Areas", DB_AREAS, default=["Timeline", "Messages"]
@@ -180,6 +194,13 @@ def render(nav):
             "w-full"
         )
         table.props("flat bordered")
+        # display the human-readable size while the column sorts on raw bytes
+        table.add_slot(
+            "body-cell-size",
+            """
+            <q-td :props="props">{{ props.row.size_human }}</q-td>
+            """,
+        )
 
     error_label = ui.label(state.db_load_error).classes("text-sm text-red-500")
 
@@ -198,9 +219,17 @@ def render(nav):
         if state.db_loaded_at and state.db_loaded_at != last_rendered:
             last_rendered = state.db_loaded_at
             table.rows = [
-                {k: str(r.get(k, "")) for k in
-                 ("filename", "mediatype", "posted_at", "size_human", "downloaded",
-                  "unlocked", "media_id", "post_id")}
+                {
+                    "filename": str(r.get("filename") or ""),
+                    "mediatype": str(r.get("mediatype") or ""),
+                    "posted_at": str(r.get("posted_at") or ""),
+                    "size": r.get("size") or 0,
+                    "size_human": str(r.get("size_human") or ""),
+                    "downloaded": str(r.get("downloaded") or ""),
+                    "unlocked": str(r.get("unlocked") or ""),
+                    "media_id": r.get("media_id"),
+                    "post_id": r.get("post_id"),
+                }
                 for r in state.db_rows
             ]
             status_label.text = f"{len(state.db_rows)} rows"

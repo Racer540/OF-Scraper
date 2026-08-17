@@ -81,6 +81,54 @@ def _fast_shutdown():
         pass
 
 
+def _build_header():
+    """Header: title, live Overall/Downloads progress bars, status badge.
+
+    The bars are compact mirrors of the Job screen's 'Overall' and
+    'Downloads (total)' bars (same progress bridge), so progress is visible
+    from every tab while a job runs; the whole block hides when idle.
+    Returns the status badge element (refreshed by the caller's timer).
+    """
+    from nicegui import ui
+
+    from ofscraper.gui.bridges import progress as progress_bridge
+
+    with ui.header().classes("items-center gap-4"):
+        ui.label("OF-Scraper").classes("text-xl font-bold")
+        header_progress = ui.column().classes("grow max-w-[480px] gap-1")
+
+        def _header_bar(label: str, task) -> None:
+            with ui.row().classes("w-full items-center gap-2"):
+                ui.label(label).classes("text-xs w-20 shrink-0 text-gray-700")
+                ui.linear_progress(task.fraction, show_value=False).classes("grow")
+                count = (
+                    f"{int(task.completed)}/{int(task.total)}" if task.total else "…"
+                )
+                ui.label(count).classes(
+                    "text-xs w-14 shrink-0 text-right font-mono text-gray-700"
+                )
+
+        def refresh_header_progress():
+            header_progress.clear()
+            snap = progress_bridge.snapshot()
+
+            def first_visible(tasks):
+                return next((t for t in tasks if t.visible), None)
+
+            overall = first_visible(snap["activity_counter"])
+            downloads = first_visible(snap["download"]["overall"])
+            header_progress.set_visibility(bool(overall or downloads))
+            with header_progress:
+                if overall:
+                    _header_bar("Overall", overall)
+                if downloads:
+                    _header_bar("Downloads", downloads)
+
+        refresh_header_progress()
+        ui.timer(0.5, refresh_header_progress)
+        return ui.badge("idle").classes("text-xs")
+
+
 def _build_ui():
     from nicegui import ui
 
@@ -98,9 +146,7 @@ def _build_ui():
                 except Exception as E:
                     ui.label(f"Screen error: {E}").classes("text-red-500")
 
-        with ui.header().classes("items-center justify-between"):
-            ui.label("OF-Scraper").classes("text-xl font-bold")
-            status_badge = ui.badge("idle").classes("text-xs")
+        status_badge = _build_header()
         with ui.left_drawer().classes("gap-2 p-4"):
             for name in screens.SCREENS:
                 ui.button(

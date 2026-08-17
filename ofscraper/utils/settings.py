@@ -168,6 +168,10 @@ def merged_settings():
     # --- Credentials & Scripts ---
     merged.private_key = args.private_key or config_data.get_private_key()
     merged.client_id = args.client_id or config_data.get_client_id()
+    # binary_options.ffmpeg from config was never merged here, so the
+    # config value was silently ignored and get_ffmpeg() fell through to
+    # whatever sat on PATH
+    merged.ffmpeg = args.ffmpeg or config_data.get_ffmpeg()
     merged.hash = config_data.get_hash()
     merged.post_script = args.post_script or config_data.get_post_script()
     merged.after_action_script = (

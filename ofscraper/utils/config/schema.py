@@ -53,6 +53,10 @@ def get_current_config_schema(config: dict = None) -> dict:
             "skip_unavailable_content": data.get_skip_unavailable_content(
                 config=config
             ),
+            "restructure_downloads": data.get_restructure_downloads(config=config),
+            "models_refresh_interval": data.get_models_refresh_interval(
+                config=config
+            ),
             "downloadbars": data.get_show_downloadprogress(config=config),
             "cache-mode": data.cache_mode_helper(config=config),
             "rotate_logs": data.get_rotate_logs(config=config),

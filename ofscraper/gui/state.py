@@ -45,6 +45,11 @@ class GuiState:
         self.models = []  # cached Model objects from the model picker
         self.models_fetched_at = None
         self.models_fetch_error = ""
+        self.models_fetch_in_flight = False  # set by fetch_models worker
+        # timestamp of the persisted list (gui/models_cache.py); None when
+        # the in-memory list never came from a fetch or the cache file
+        self.models_cache_fetched_at = None
+        self.models_cache_note = ""  # e.g. 'cached 3.2h old' for the status line
         self.selected_usernames = []  # names chosen in the model picker
 
         # --- check-command handoff (filled in by the check shim) ------------

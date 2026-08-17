@@ -124,7 +124,11 @@ async def download(c, ele, model_id, username):
         common_globals.log.debug(f"{get_medialog(ele)} Download finished")
         return data
     except Exception as E:
-        common_globals.log.debug(f"{get_medialog(ele)} exception {E}")
+        # the WHY has to reach the console (GUI log pane runs at INFO) —
+        # the full traceback stays at debug for the log file
+        common_globals.log.warning(
+            f"{get_medialog(ele)} Download failed: {type(E).__name__}: {E}"
+        )
         common_globals.log.debug(
             f"{get_medialog(ele)} exception {traceback.format_exc()}"
         )

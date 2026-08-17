@@ -115,6 +115,18 @@ def load_general_config():
         "OFSC_SKIP_UNAVAILABLE_DEFAULT", "True"
     ).lower() in ("true", "1")
 
+    # RESTRUCTURE_DOWNLOADS_DEFAULT: Default to True (Yes)
+    config["RESTRUCTURE_DOWNLOADS_DEFAULT"] = (
+        os.getenv("OFSC_RESTRUCTURE_DOWNLOADS_DEFAULT", "True").lower()
+        in ("true", "1")
+    )
+
+    # MODELS_REFRESH_INTERVAL_DEFAULT: hours before the GUI model list
+    # auto-refreshes; 0 disables auto-refresh (manual only)
+    config["MODELS_REFRESH_INTERVAL_DEFAULT"] = float(
+        os.getenv("OFSC_MODELS_REFRESH_INTERVAL_DEFAULT", "24")
+    )
+
     # EXPIRED_GRACE_DEFAULT: Default to 1 day
     config["EXPIRED_GRACE_DEFAULT"] = int(
         os.getenv("OFSC_EXPIRED_GRACE_DEFAULT", "1")

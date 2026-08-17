@@ -118,6 +118,12 @@ class MainDownloadManager(DownloadManager):
                     )
                     raise E
                 except Exception as E:
+                    # surface the WHY per attempt — the console (and GUI log
+                    # pane at INFO) otherwise shows nothing until the final
+                    # skip
+                    common_globals.log.warning(
+                        f"{common_logs.get_medialog(ele)} [attempt {common_globals.attempt.get()}/{get_download_retries()}] download attempt failed: {type(E).__name__}: {E}"
+                    )
                     common_globals.log.traceback_(
                         f"{common_logs.get_medialog(ele)} [attempt {common_globals.attempt.get()}/{get_download_retries()}] {traceback.format_exc()}"
                     )

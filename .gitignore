@@ -69,3 +69,5 @@ wiki/
 docs/
 
 repomix-output*
+# local secrets
+portainer api key.txt

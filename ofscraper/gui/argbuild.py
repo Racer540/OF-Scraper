@@ -21,6 +21,7 @@ import ofscraper.utils.args.parse.commands.message as message
 import ofscraper.utils.args.parse.commands.metadata as metadata
 import ofscraper.utils.args.parse.commands.paid as paid
 import ofscraper.utils.args.parse.commands.post as post
+import ofscraper.utils.args.parse.commands.restructure as restructure
 import ofscraper.utils.args.parse.commands.story as story
 import ofscraper.utils.settings as settings
 from ofscraper.utils.args.main import AutoDotDict
@@ -48,6 +49,7 @@ def register_commands():
         (post.post_check, "post_check"),
         (metadata.metadata, "metadata"),
         (db.db, "db"),
+        (restructure.restructure, "restructure"),
     ]:
         try:
             main.program.add_command(cmd, name)

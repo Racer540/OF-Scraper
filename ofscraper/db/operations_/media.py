@@ -156,6 +156,16 @@ SELECT media_id, post_id FROM medias
 allPostIDDLCheck = """
 SELECT media_id, post_id FROM medias where downloaded=(1)
 """
+mediaLocationSelect = """
+SELECT media_id,post_id,link,api_type,media_type,
+preview,created_at,posted_at,directory,filename,size
+FROM medias where model_id=(?) and downloaded=(1)
+"""
+mediaLocationUpdate = """
+UPDATE medias
+SET directory=(?),filename=(?)
+WHERE media_id=(?) and model_id=(?) and post_id=(?)
+"""
 getTimelineMedia = """
 SELECT
 media_id,post_id,link,directory,
@@ -645,6 +655,43 @@ def get_streams_media(conn=None, model_id=None, **kwargs) -> list:
             )
             for ele in data
         ]
+
+
+@run
+@wrapper.operation_wrapper_async
+def get_downloaded_media_locations(
+    model_id=None, username=None, conn=None, **kwargs
+) -> list:
+    """Every downloaded media row with its recorded file location.
+
+    Consumed by the restructure pass (commands/scraper/actions/download/
+    restructure.py) to move already-downloaded files when dir_format
+    changes.
+    """
+    with contextlib.closing(conn.cursor()) as cur:
+        cur.execute(mediaLocationSelect, [model_id])
+        return [dict(row) for row in cur.fetchall()]
+
+
+@run
+@wrapper.operation_wrapper_async
+def update_media_locations(
+    updates=None, model_id=None, username=None, conn=None, **kwargs
+) -> None:
+    """Batch-update recorded locations after files were moved.
+
+    updates: iterable of (directory, filename, media_id, post_id) tuples —
+    model_id comes from the call so the update stays scoped to one model.
+    """
+    rows = [
+        [directory, filename, media_id, model_id, post_id]
+        for directory, filename, media_id, post_id in (updates or [])
+    ]
+    if not rows:
+        return
+    with contextlib.closing(conn.cursor()) as cur:
+        cur.executemany(mediaLocationUpdate, rows)
+        conn.commit()
 
 
 @run

@@ -93,19 +93,22 @@ class DownloadManager:
         if total == 0:
             return 0
         if await skip_download_script(total, ele):
+            common_globals.log.info(
+                f"{get_medialog(ele)} skipping download: skip_download_script returned true"
+            )
             return 0
         file_size_max = settings.get_settings().size_max
         file_size_min = settings.get_settings().size_min
         if int(file_size_max) > 0 and (int(total) > int(file_size_max)):
             ele.mediatype = "Forced_skipped"
-            common_globals.log.debug(
-                f"{get_medialog(ele)} {format_size(total)} over size limit"
+            common_globals.log.info(
+                f"{get_medialog(ele)} skipping download: {format_size(total)} is over the size limit ({format_size(int(file_size_max))})"
             )
             return 0
         elif int(file_size_min) > 0 and (int(total) < int(file_size_min)):
             ele.mediatype = "Forced_skipped"
-            common_globals.log.debug(
-                f"{get_medialog(ele)} {format_size(total)} under size min"
+            common_globals.log.info(
+                f"{get_medialog(ele)} skipping download: {format_size(total)} is under the size minimum ({format_size(int(file_size_min))})"
             )
             return 0
 

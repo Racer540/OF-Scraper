@@ -30,6 +30,34 @@ import ofscraper.managers.manager as manager
 
 
 async def downloader(username=None, model_id=None, posts=None, media=None, **kwargs):
+    # Before anything else: if dir_format/save_location changed since these
+    # files were downloaded, move them into the current layout so nothing
+    # gets re-downloaded into a parallel tree.  Failures here must never
+    # block the download itself.
+    try:
+        from ofscraper.commands.scraper.actions.download.restructure import (
+            restructure_model_downloads,
+        )
+
+        await restructure_model_downloads(username, model_id)
+    except Exception as E:
+        logging.getLogger("shared").warning(
+            f"[{username}] restructure pass skipped: {E}"
+        )
+
+    # Sweep orphan .part temps from earlier failed attempts (only removed
+    # when the media is recorded complete AND the final file exists).
+    try:
+        from ofscraper.commands.scraper.actions.download.restructure import (
+            cleanup_orphan_parts,
+        )
+
+        await cleanup_orphan_parts(username, model_id)
+    except Exception as E:
+        logging.getLogger("shared").warning(
+            f"[{username}] orphan part cleanup skipped: {E}"
+        )
+
     download_str = download_activity_str.format(username=username)
     path_str = format_safe(
         f"\nSaving files to [deep_sky_blue2]{str(pathlib.Path(common_paths.get_save_location(),config_data.get_dirformat(),config_data.get_fileformat()))}[/deep_sky_blue2]",

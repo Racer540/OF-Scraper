@@ -9,6 +9,7 @@ from ofscraper.managers.model import ModelManager
 
 
 from ofscraper.commands.db import db
+from ofscraper.commands.restructure import restructure_all
 import ofscraper.commands.metadata.metadata as metadata
 import ofscraper.commands.scraper.scraper as actions
 import ofscraper.commands.manual as manual
@@ -101,6 +102,8 @@ class mainManager:
             manual.manual_download()
         elif settings.get_settings().command == "db":
             db()
+        elif settings.get_settings().command == "restructure":
+            restructure_all()
         else:
             actions.main()
 

@@ -141,6 +141,10 @@ class AltDownloadManager(DownloadManager):
                     )
                     raise E
                 except Exception as E:
+                    # surface the WHY per attempt (console/GUI pane run at INFO)
+                    common_globals.log.warning(
+                        f"{get_medialog(ele)} [attempt {_attempt.get()}/{get_download_retries()}] download attempt failed: {type(E).__name__}: {E}"
+                    )
                     common_globals.log.traceback_(
                         f"{get_medialog(ele)} [attempt {_attempt.get()}/{get_download_retries()}] {traceback.format_exc()}"
                     )
@@ -330,7 +334,9 @@ class AltDownloadManager(DownloadManager):
 
         # Fallback error check if stderr is captured and Output is missing
         if t.stderr and t.stderr.decode().find("Output") == -1:
-            common_globals.log.debug(f"{common_logs.get_medialog(ele)} ffmpeg failed")
+            common_globals.log.warning(
+                f"{common_logs.get_medialog(ele)} ffmpeg failed during DRM merge"
+            )
             common_globals.log.debug(
                 f"{common_logs.get_medialog(ele)} ffmpeg {t.stderr.decode()}"
             )

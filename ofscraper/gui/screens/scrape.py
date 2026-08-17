@@ -53,11 +53,7 @@ def render(nav):
     # ------------------------------------------------------------------ users
     with ui.card().classes("w-full"):
         ui.label("Users").classes("text-lg font-semibold")
-        picker_label = ui.label(
-            ", ".join(state.selected_usernames)
-            if state.selected_usernames
-            else "no models selected yet"
-        ).classes("text-sm text-gray-400 wrap")
+        run_preview = ui.label().classes("text-sm text-gray-400 wrap")
         with ui.row().classes("w-full items-center"):
             ui.button("Pick models", on_click=lambda: nav("Models")).props("outline")
             manual_users = ui.input(
@@ -330,3 +326,23 @@ def render(nav):
         # extras verbatim
         argv += (extra.value or "").split()
         return argv
+
+    # live preview of exactly who this run will process — makes the
+    # manual-usernames-override-picker behavior impossible to miss
+    def refresh_run_preview():
+        users = _split_users()
+        if (manual_users.value or "").strip():
+            run_preview.text = (
+                f"Will run: {', '.join(users)} — typed usernames OVERRIDE "
+                "the model picker"
+            )
+            run_preview.classes("text-yellow-400", remove="text-gray-400")
+        elif users:
+            run_preview.text = f"Will run: {', '.join(users)}"
+            run_preview.classes("text-gray-400", remove="text-yellow-400")
+        else:
+            run_preview.text = "no models selected yet"
+            run_preview.classes("text-gray-400", remove="text-yellow-400")
+
+    refresh_run_preview()
+    ui.timer(0.5, refresh_run_preview)

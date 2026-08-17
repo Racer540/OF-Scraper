@@ -46,6 +46,7 @@ https://pypi.org/project/ofscraper/#history
   - [Table-of-contents](#table-of-contents)
   - [Description](#description)
   - [Documentation](#documentation)
+  - [DRM (protected videos) — key modes](#drm-protected-videos--key-modes)
   - [Issues](#issues)
     - [Private Reports](#private-reports)
   - [Feature Requests](#feature-requests)
@@ -73,6 +74,47 @@ For detailed instructions on:
 - And other pertinent information you might need
 
 [Official Documention](https://of-scraper.gitbook.io/of-scraper)
+
+## DRM (protected videos) — key modes
+
+Some videos are DRM-protected (Widevine) and need a decryption key before
+ffmpeg can convert them. `cdm_options.key-mode-default` selects how keys are
+obtained:
+
+| mode | how it works | trade-off |
+|------|--------------|-----------|
+| `cdrm` (default) | asks the public key-decryption API (`cdrm-project.com`) | zero setup, but protected downloads stall whenever that free service is down |
+| `manual` | decrypts locally with your own Widevine L3 device file | self-contained — no third party; requires a one-time `.wvd` |
+
+### Setting up `manual` mode
+
+1. Put your Widevine **L3 device file** (`.wvd`) somewhere stable, e.g.
+   `<config folder>/<profile>/cdm/device.wvd`
+2. In `config.json` → `cdm_options` (or the GUI's Config → DRM/CDM screen) set:
+   - `"key-mode-default": "manual"`
+   - `"private-key": "<full path to device.wvd>"`
+   - `"client-id"` can stay empty — a `.wvd` already contains both halves.
+     (The older split `private-key` + `client-id` file pair still works.)
+3. Done — protected videos now decrypt locally whenever OnlyFans itself is
+   up, and ffmpeg (version 6 or 7) handles the conversion.
+
+Until the file exists, DRM downloads stop with a message naming the exact
+expected path instead of failing cryptically.
+
+### Where does a `.wvd` come from?
+
+A `.wvd` is a [pywidevine](https://github.com/devine-dl/pywidevine)
+container holding a Widevine device's client ID and private key. L3 (the
+software level of Widevine, present in every Android device/emulator)
+credentials are extracted ("dumped") from a device you control using
+open-source L3 dumper tooling — the same requirement CDRM-Project's
+self-hosting guide has. Extract from your own hardware: downloaded/shared
+dumps are somebody else's device credentials — Google revokes them and
+they can stop working at any moment, which just trades one unreliable
+dependency for a worse one.
+
+> Note: decrypting DRM-protected media may be restricted by law in your
+> jurisdiction regardless of an active subscription. Know your local rules.
 
 <h3>DISCLAIMERS:</h3>
 <ol>

@@ -137,6 +137,17 @@ async def key_helper_cdrm(c, pssh, licence_url, id):
             key = data["message"]
         return key
     except Exception as E:
+        # the free cdrm key service is a hard dependency for protected
+        # videos in 'cdrm' mode — translate transport errors into an
+        # actionable reason for the console/GUI pane
+        if "timeout" in str(E).lower() or "connect" in str(E).lower():
+            raise Exception(
+                f"DRM key service unreachable ({of_env.getattr('CDRM')}) — "
+                "protected videos are skipped until it responds; retry "
+                "later, point OFSC_CDRM_URL at another instance, or "
+                f"switch cdm_options.key-mode-default to 'manual' "
+                f"(detail: {E})"
+            ) from E
         log.traceback_(E)
         log.traceback_(traceback.format_exc())
         raise E
@@ -149,19 +160,38 @@ async def key_helper_manual(c, pssh, licence_url, id):
         log.debug(f"ID:{id} pssh: {pssh is not None}")
         log.debug(f"ID:{id} licence: {licence_url}")
 
+        # check the configured device BEFORE per-media work so a config
+        # problem surfaces as one clear message, not a per-file crash
+        private_key_path = pathlib.Path(settings.get_settings().private_key)
+        client_id_path = settings.get_settings().client_id
+        if not private_key_path.is_file():
+            raise Exception(
+                f"manual key mode: device file not found at "
+                f"{private_key_path} — place your Widevine .wvd there "
+                "(path is set in Config → DRM/CDM → private-key)"
+            )
+
         # prepare pssh
         pssh_obj = PSSH(pssh)
 
-        # load device
-        private_key = pathlib.Path(settings.get_settings().private_key).read_bytes()
-        client_id = pathlib.Path(settings.get_settings().client_id).read_bytes()
-        device = Device(
-            security_level=3,
-            private_key=private_key,
-            client_id=client_id,
-            type_="ANDROID",
-            flags=None,
-        )
+        # load device — a single .wvd file (pywidevine Device.load) or the
+        # legacy split private-key + client-id files
+        if private_key_path.suffix.lower() == ".wvd":
+            device = Device.load(private_key_path)
+        elif client_id_path:
+            device = Device(
+                security_level=3,
+                private_key=private_key_path.read_bytes(),
+                client_id=pathlib.Path(client_id_path).read_bytes(),
+                type_="ANDROID",
+                flags=None,
+            )
+        else:
+            raise Exception(
+                "manual key mode needs a Widevine L3 device: point "
+                "cdm_options.private-key at a .wvd file, or set both "
+                "private-key and client-id files"
+            )
 
         # load cdm
         cdm = Cdm.from_device(device)

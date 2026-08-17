@@ -62,9 +62,13 @@ DESCRIPTIONS = {
     # binary_options
     "ffmpeg": "Path to ffmpeg (ffprobe is looked up next to it)",
     # cdm_options
-    "private-key": "Path to your CDM private key file (DRM content)",
-    "client-id": "CDM client id that pairs with the private key",
-    "key-mode-default": "How DRM keys are obtained (manual, keydb, ...)",
+    "private-key": "Path to your Widevine device file (.wvd) or private key "
+    "file — .wvd is enough by itself (DRM content)",
+    "client-id": "CDM client id file — only needed for the split private-key "
+    "style (skip it when using a .wvd)",
+    "key-mode-default": "How DRM keys are obtained: 'cdrm' (public API "
+    "service, down sometimes) or 'manual' (your own device file, "
+    "self-contained)",
     # performance_options
     "download_sems": "Concurrent downloads per model",
     "download_limit": "Global download speed cap in bytes (0 = unlimited)",
@@ -78,6 +82,11 @@ DESCRIPTIONS = {
     "dynamic-mode-default": "How the request signatures refresh (a/headers)",
     "skip_unavailable_content": "Skip wall/story scans for expired "
     "subscriptions — set to No to still try stories of recently expired subs",
+    "restructure_downloads": "When the folder layout (dir_format) changes, "
+    "move already-downloaded files into the new structure instead of "
+    "re-downloading (runs before each download; also on Home)",
+    "models_refresh_interval": "Hours before the saved model list "
+    "auto-refreshes in the GUI (0 = manual refresh only)",
     "downloadbars": "Show per-file progress bars while downloading",
     "cache-mode": "API response cache: sqlite, json, disabled or api_disabled",
     "rotate_logs": "Start a fresh log file each day",

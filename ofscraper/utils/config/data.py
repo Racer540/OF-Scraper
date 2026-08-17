@@ -337,7 +337,7 @@ def get_discord(config=None):
     if config is False:
         return of_env.getattr("DISCORD_DEFAULT")
     val = config.get("discord")
-    return val if val is not None else of_env.getattr("DISCORD_DEFAULT", "")
+    return val if val is not None else of_env.getattr("DISCORD_DEFAULT")
 
 
 @wrapper.config_reader
@@ -682,6 +682,32 @@ def get_skip_unavailable_content(config=None):
         "advanced_options", {}
     ).get("skip_unavailable_content")
     return val if val is not None else of_env.getattr("SKIP_UNAVAILABLE_DEFAULT")
+
+
+@wrapper.config_reader
+def get_restructure_downloads(config=None):
+    if config is False:
+        return of_env.getattr("RESTRUCTURE_DOWNLOADS_DEFAULT")
+    val = config.get("restructure_downloads") or config.get(
+        "advanced_options", {}
+    ).get("restructure_downloads")
+    return (
+        val if val is not None else of_env.getattr("RESTRUCTURE_DOWNLOADS_DEFAULT")
+    )
+
+
+@wrapper.config_reader
+def get_models_refresh_interval(config=None):
+    if config is False:
+        return of_env.getattr("MODELS_REFRESH_INTERVAL_DEFAULT")
+    val = config.get("models_refresh_interval") or config.get(
+        "advanced_options", {}
+    ).get("models_refresh_interval")
+    return (
+        val
+        if val is not None
+        else of_env.getattr("MODELS_REFRESH_INTERVAL_DEFAULT")
+    )
 
 
 @wrapper.config_reader

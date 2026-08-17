@@ -112,6 +112,18 @@ def render(nav):
     ui.timer(1.0, refresh_job)
 
     with ui.card().classes("w-full"):
+        ui.label("Maintenance").classes("text-lg")
+        ui.label(
+            "Move already-downloaded files into the current folder layout "
+            "(dir_format) instead of re-downloading — runs offline over "
+            "every model database, and also happens automatically before "
+            "each download."
+        ).classes("text-sm text-gray-400")
+        screens.run_button(
+            ["restructure"], "Restructure downloaded files", label="Restructure files"
+        )
+
+    with ui.card().classes("w-full"):
         ui.label("Quick job (advanced)").classes("text-lg")
         ui.label(
             "Run any command exactly as you would in the terminal, minus the "
