@@ -1,0 +1,83 @@
+# .github/workflows/gui-build.yml
+name: Build GUI Executable
+
+# Rebuild the Windows onefile exe on every PR update and every push to
+# main/gui, so a fresh binary is always downloadable from the run's artifacts.
+on:
+  pull_request:
+  push:
+    branches: [main, gui]
+  workflow_dispatch:
+
+# A new push/PR update to the same ref cancels the superseded run
+concurrency:
+  group: gui-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The PyInstaller spec prints emoji status lines; the Windows console's
+  # cp1252 codepage would otherwise crash Python print() with UnicodeEncodeError
+  PYTHONUTF8: "1"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build Windows onefile exe
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Full Git History
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # version-pioneer derives the version from git tags
+          fetch-tags: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Install venv and dependencies
+        run: |
+          uv venv
+          . .venv/Scripts/activate
+          uv sync --extra ffmpeg # pyffmpeg lets the spec bundle ffmpeg
+
+      - name: Install PyInstaller
+        run: |
+          . .venv/Scripts/activate
+          uv pip install pyinstaller==6.14.1 # pin matching package-builder-release
+
+      # Uses the spec (not bare flags) so NiceGUI static assets, the ffmpeg
+      # binary, and the diskcache hidden import are bundled -- the flag-based
+      # build in publish-release-binaries.yml misses these and breaks the GUI
+      - name: Build onefile executable
+        run: |
+          . .venv/Scripts/activate
+          pyinstaller specs/onefile.spec --noconfirm --clean
+
+      - name: Stamp exe with commit
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+          mv dist/ofscraper_file.exe "dist/ofscraper_gui_windows_${SHORT_SHA}.exe"
+          ls -lh dist/
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ofscraper-gui-windows-${{ env.SHORT_SHA }}
+          path: dist/ofscraper_gui_windows_*.exe
+          if-no-files-found: error
+          retention-days: 14
