@@ -15,7 +15,7 @@ from ofscraper.gui.state import get_state
 
 def _version() -> str:
     try:
-        from ofscraper._version import __version__
+        from ofscraper.__version__ import __version__
 
         return __version__
     except Exception:

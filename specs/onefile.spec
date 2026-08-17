@@ -24,6 +24,64 @@ from PyInstaller.utils.hooks import collect_data_files
 
 nicegui_datas = collect_data_files('nicegui')
 
+
+def _windows_version_info():
+    """Embed the build version into the exe's Windows file properties
+    (Details tab in Explorer). Reads the version hatchling derived from git
+    at install time, e.g. 3.14.7+g8256b6f4."""
+    if os.name != 'nt':
+        return None
+    import re
+
+    from PyInstaller.utils.win32.versioninfo import (
+        FixedFileInfo,
+        StringFileInfo,
+        StringStruct,
+        StringTable,
+        VarFileInfo,
+        VarStruct,
+        VSVersionInfo,
+    )
+
+    try:
+        from importlib.metadata import version as pkg_version
+
+        ver = pkg_version('ofscraper')
+    except Exception:
+        ver = '0.0.0'
+    m = re.match(r'(\d+)\.(\d+)\.(\d+)', ver)
+    quad = tuple(int(g) for g in m.groups()) + (0,) if m else (0, 0, 0, 0)
+    return VSVersionInfo(
+        ffi=FixedFileInfo(
+            filevers=quad,
+            prodvers=quad,
+            mask=0x3F,
+            flags=0x0,
+            OS=0x40004,
+            fileType=0x1,
+            subtype=0x0,
+            date=(0, 0),
+        ),
+        kids=[
+            StringFileInfo(
+                [
+                    StringTable(
+                        '040904B0',
+                        [
+                            StringStruct('CompanyName', 'OF-Scraper'),
+                            StringStruct('FileDescription', 'OF-Scraper'),
+                            StringStruct('FileVersion', ver),
+                            StringStruct('ProductName', 'OF-Scraper'),
+                            StringStruct('ProductVersion', ver),
+                            StringStruct('OriginalFilename', 'ofscraper_file.exe'),
+                        ],
+                    )
+                ]
+            ),
+            VarFileInfo([VarStruct('Translation', [1033, 1200])]),
+        ],
+    )
+
 # This Analysis block contains all the necessary dependency information
 a = Analysis(
     # Provide a full, unambiguous path to the main script
@@ -54,6 +112,7 @@ exe = EXE(
     a.datas,
     [],
     name='ofscraper_file', # The base name of the output executable
+    version=_windows_version_info(),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
