@@ -1,8 +1,9 @@
-# .github/workflows/gui-build.yml
-name: Build GUI Executable
+# .github/workflows/exe-build.yml
+name: Build Executables
 
-# Rebuild the Windows onefile exe on every PR update and every push to
-# main/gui, so a fresh binary is always downloadable from the run's artifacts.
+# Rebuild the Windows onefile exes on every PR update and every push to
+# main/gui, so fresh binaries (full GUI build + lean CLI-only build) are
+# always downloadable from the run's artifacts.
 on:
   pull_request:
   push:
@@ -11,11 +12,11 @@ on:
 
 # A new push/PR update to the same ref cancels the superseded run
 concurrency:
-  group: gui-build-${{ github.ref }}
+  group: exe-build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  # The PyInstaller spec prints emoji status lines; the Windows console's
+  # The PyInstaller specs print emoji status lines; the Windows console's
   # cp1252 codepage would otherwise crash Python print() with UnicodeEncodeError
   PYTHONUTF8: "1"
 
@@ -24,7 +25,7 @@ permissions:
 
 jobs:
   build-windows:
-    name: Build Windows onefile exe
+    name: Build Windows onefile exes (GUI + CLI)
     runs-on: windows-latest
 
     defaults:
@@ -52,32 +53,44 @@ jobs:
         run: |
           uv venv
           . .venv/Scripts/activate
-          uv sync --extra ffmpeg # pyffmpeg lets the spec bundle ffmpeg
+          uv sync --extra ffmpeg # pyffmpeg lets the specs bundle ffmpeg
 
       - name: Install PyInstaller
         run: |
           . .venv/Scripts/activate
           uv pip install pyinstaller==6.14.1 # pin matching package-builder-release
 
-      # Uses the spec (not bare flags) so NiceGUI static assets, the ffmpeg
-      # binary, and the diskcache hidden import are bundled -- the flag-based
-      # build in publish-release-binaries.yml misses these and breaks the GUI
-      - name: Build onefile executable
+      # Both builds use specs (not bare flags) so NiceGUI static assets, the
+      # ffmpeg binary, and the diskcache hidden import are bundled correctly --
+      # the flag-based build in publish-release-binaries.yml misses these.
+      # onefile.spec        -> full build, GUI included
+      # onefile-cli.spec    -> same entry point with the GUI stack excluded
+      - name: Build onefile executables
         run: |
           . .venv/Scripts/activate
           pyinstaller specs/onefile.spec --noconfirm --clean
+          pyinstaller specs/onefile-cli.spec --noconfirm --clean
 
-      - name: Stamp exe with commit
+      - name: Stamp exes with commit
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
           mv dist/ofscraper_file.exe "dist/ofscraper_gui_windows_${SHORT_SHA}.exe"
+          mv dist/ofscraper_cli_file.exe "dist/ofscraper_cli_windows_${SHORT_SHA}.exe"
           ls -lh dist/
 
-      - name: Upload Build Artifact
+      - name: Upload GUI Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ofscraper-gui-windows-${{ env.SHORT_SHA }}
           path: dist/ofscraper_gui_windows_*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload CLI Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ofscraper-cli-windows-${{ env.SHORT_SHA }}
+          path: dist/ofscraper_cli_windows_*.exe
           if-no-files-found: error
           retention-days: 14
