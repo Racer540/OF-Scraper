@@ -249,11 +249,35 @@ class ModelManager:
         # This handles interactive mode when a specific username list is provided via CLI.
         if not is_daemon and usernames:
             allowed_names_and_ids = {str(x) for x in usernames}
-            return [
-                model
-                for model in filtered_models.values()
-                if str(model.name) in allowed_names_and_ids or str(model.id) in allowed_names_and_ids
-            ]
+
+            def match_allowed(models):
+                return [
+                    model
+                    for model in models
+                    if str(model.name) in allowed_names_and_ids
+                    or str(model.id) in allowed_names_and_ids
+                ]
+
+            selected = match_allowed(filtered_models.values())
+            missing = allowed_names_and_ids - {
+                str(m.name) for m in selected
+            } - {str(m.id) for m in selected}
+            if missing:
+                # A previous narrow run (e.g. -u with one name) can leave the
+                # subscription cache holding ONLY those accounts -- the
+                # individual-fetch optimization in retriver.get_models
+                # populates just the named users -- and _load_all_subs_if_needed
+                # then never refetches because the cache is non-empty. Every
+                # later selection silently narrows to that stale set. Fetch
+                # the requested accounts so the selection can match them.
+                log.info(
+                    f"{len(missing)} requested models are not in the cached "
+                    "subscription list — refetching from the API"
+                )
+                self._fetch_all_subs(force_refetch=True)
+                filtered_models = self._filter_and_prompt_for_selection()
+                selected = match_allowed(filtered_models.values())
+            return selected
 
         # FINAL CASE: We must prompt for a selection.
         # This is where the interactive terminal UI menu is actually launched.
