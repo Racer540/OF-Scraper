@@ -12,9 +12,9 @@ try:
     from pyffmpeg import FFmpeg
     ffmpeg_binary_path = FFmpeg().get_ffmpeg_bin()
     ffmpeg_binary_tuple = (ffmpeg_binary_path, '.')
-    print(f"✅ Found ffmpeg binary to bundle: {ffmpeg_binary_path}")
+    print(f"[OK] Found ffmpeg binary to bundle: {ffmpeg_binary_path}")
 except Exception as e:
-    print(f"⚠️ WARNING: Could not find ffmpeg binary; it will not be bundled. Error: {e}")
+    print(f"[WARN]: Could not find ffmpeg binary; it will not be bundled. Error: {e}")
     ffmpeg_binary_tuple = None
 
 # --- NiceGUI static assets (required for the GUI; PyInstaller misses them) ---
