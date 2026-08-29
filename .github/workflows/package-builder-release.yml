@@ -16,10 +16,6 @@ on:
         description: "Publish to PyPI? (t/f)"
         required: true
         type: boolean
-      docker:
-        description: "Publish to Docker Hub & GHCR (t/f)"
-        required: true
-        type: boolean
       test_pypi:
         description: "Perform a test upload to Test PyPI? (t/f)"
         required: true
@@ -80,45 +76,6 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: ./scripts/release_version.sh
-
-  determine_docker_latest_logic:
-    name: Determine Docker Latest Tag Logic
-    needs: [determine_tags_and_versions]
-    if: ${{ inputs.docker }} 
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-    outputs:
-      should_apply_stable_latest: ${{steps.run_python_logic.outputs.should_apply_stable_latest}}
-      should_apply_dev_latest: ${{steps.run_python_logic.outputs.should_apply_dev_latest}}
-    steps:
-      - name: Checkout repository for script
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          repository: ${{ github.repository }}
-          github-server-url: ${{ github.server_url }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install Python dependencies
-        run: pip install requests
-
-      - name: Execute Latest Tag Logic Script
-        id: run_python_logic
-        run: python scripts/determine_docker_stable_dev_tags.py \
-          "${{ needs.determine_tags_and_versions.outputs.commit_timestamp }}" \
-          "${{ needs.determine_tags_and_versions.outputs.is_stable_release }}" \
-          "${{ needs.determine_tags_and_versions.outputs.is_dev_release }}" \
-          "${{ inputs.docker}}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_WORKFLOW_REF: ${{ github.workflow_ref }}
 
   pypi:
     needs: [determine_tags_and_versions]
@@ -231,25 +188,6 @@ jobs:
       input_version: ${{ inputs.version }}
       package_version: ${{ needs.determine_tags_and_versions.outputs.package_version }}
       long_hash: ${{ needs.determine_tags_and_versions.outputs.long_hash }}
-
-  call_docker_publish:
-    name: Publish Docker Images
-    needs: [determine_tags_and_versions, determine_docker_latest_logic]
-    if: ${{ inputs.docker }}
-    uses: ./.github/workflows/publish-release-dockers.yml
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-      COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
-    with:
-      input_version: ${{ inputs.version }}
-      package_version: ${{ needs.determine_tags_and_versions.outputs.package_version }}
-      long_hash: ${{ needs.determine_tags_and_versions.outputs.long_hash }}
-      is_stable_release: ${{ fromJSON(needs.determine_tags_and_versions.outputs.is_stable_release) }}
-      is_dev_release: ${{ fromJSON(needs.determine_tags_and_versions.outputs.is_dev_release) }}
-      should_apply_stable_latest: ${{ fromJSON(needs.determine_docker_latest_logic.outputs.should_apply_stable_latest) }}
-      should_apply_dev_latest: ${{ fromJSON(needs.determine_docker_latest_logic.outputs.should_apply_dev_latest) }}
 
 # --- DISCORD TEST JOB ---
   discord_test_announcement:
