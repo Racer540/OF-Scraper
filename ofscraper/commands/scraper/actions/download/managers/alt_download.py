@@ -533,25 +533,8 @@ class AltDownloadManager(DownloadManager):
             with _:
                 try:
                     for item in [audio, video]:
-                        if item is None:
-                            continue
-                        try:
+                        if item is not None:
                             item = await keyhelpers.un_encrypt(item, c, ele)
-                        except Exception:
-                            # Poison-pill cleanup: a track that fails
-                            # decryption is corrupt/truncated (all observed
-                            # cases are chunked no-Content-Length downloads).
-                            # The resume cache marks it 'complete', so future
-                            # runs would skip the download and re-decrypt
-                            # this same bad file forever. Drop the file and
-                            # the cached headers so the next attempt fetches
-                            # the track fresh.
-                            try:
-                                pathlib.Path(item["path"]).unlink(missing_ok=True)
-                            except Exception:
-                                pass
-                            await self._set_data(ele, item, None)
-                            raise
                 except Exception as E:
                     # DRM failures were debug-only (traceback_) — invisible
                     # in the GUI pane/console at NORMAL level, so protected
@@ -562,6 +545,23 @@ class AltDownloadManager(DownloadManager):
                     )
                     common_globals.log.traceback_(E)
                     common_globals.log.traceback_(traceback.format_exc())
+                    # Poison-pill cleanup for BOTH tracks. A track that
+                    # fails decryption — or is never attempted because its
+                    # cached 'download complete' marker hid a stale file
+                    # (7KB manifest XML from the jammed-URL era) — keeps
+                    # its .part and cache entry, so every future run skips
+                    # the download and re-decrypts the same bad file
+                    # forever. Successfully decrypted tracks are renamed
+                    # away from .part and are left untouched.
+                    for item_ in (audio, video):
+                        if item_ is None:
+                            continue
+                        try:
+                            if str(item_["path"]).lower().endswith(".part"):
+                                pathlib.Path(item_["path"]).unlink(missing_ok=True)
+                                await self._set_data(ele, item_, None)
+                        except Exception:
+                            pass
                     raise E
 
     async def _add_download_job_task(self, ele, total=None, placeholderObj=None):
