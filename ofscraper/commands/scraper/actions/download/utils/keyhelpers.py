@@ -87,10 +87,9 @@ async def un_encrypt(item, c, ele, input_=None):
             ],
             level=env.getattr("FFMPEG_SUBPROCESS_LEVEL"),
             name="ffmpeg",
+            capture_output=True,
         )
         if not pathlib.Path(newpath).exists():
-            log.debug(f"{get_medialog(ele)} ffmpeg {r.stderr.decode()}")
-            log.debug(f"{get_medialog(ele)} ffmpeg {r.stdout.decode()}")
             await asyncio.get_event_loop().run_in_executor(
                 common_globals.thread,
                 partial(
@@ -98,8 +97,9 @@ async def un_encrypt(item, c, ele, input_=None):
                 ),
             )
             stderr_tail = (r.stderr or b"").decode(errors="ignore").strip()[-300:]
+            log.debug(f"{get_medialog(ele)} ffmpeg rc={r.returncode} stderr: {stderr_tail}")
             raise Exception(
-                f"{get_medialog(ele)} ffmpeg DRM decryption failed"
+                f"{get_medialog(ele)} ffmpeg DRM decryption failed (rc={r.returncode})"
                 + (f" — {stderr_tail}" if stderr_tail else "")
             )
         else:

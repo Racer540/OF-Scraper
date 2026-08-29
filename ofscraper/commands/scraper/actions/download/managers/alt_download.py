@@ -221,11 +221,14 @@ class AltDownloadManager(DownloadManager):
                     total = item["total"]
                     return item
                 elif total != resume_size:
-                    if total is None and resume_size:
-                        # no total -> no Range resume; a stale .part would be
-                        # appended to and corrupted, so start clean
+                    if resume_size:
+                        # The Range header built above is discarded before the
+                        # request (headers are overwritten), so the writer can
+                        # only append a FULL fresh stream — appending onto a
+                        # stale .part would corrupt it. Always start clean.
                         common_globals.log.debug(
-                            f"{get_medialog(ele)} unknown content-length; discarding partial file"
+                            f"{get_medialog(ele)} discarding partial file "
+                            f"({resume_size} bytes) for fresh download"
                         )
                         pathlib.Path(placeholderObj.tempfilepath).unlink(
                             missing_ok=True
@@ -351,20 +354,25 @@ class AltDownloadManager(DownloadManager):
             ]
         )
 
-        # Async run FFmpeg with the -y flag
+        # Async run FFmpeg with the -y flag; capture_output is required in
+        # the windowed exe (no console to inherit) or stderr is lost and
+        # merge failures stay silent
         t = await async_run(
             ffmpeg_cmd,
             name="ffmpeg",
             level=of_env.getattr("FFMPEG_SUBPROCESS_LEVEL"),
+            capture_output=True,
         )
 
         # Fallback error check if stderr is captured and Output is missing
-        if t.stderr and t.stderr.decode().find("Output") == -1:
+        if t.stderr and t.stderr.decode(errors="ignore").find("Output") == -1:
+            stderr_tail = t.stderr.decode(errors="ignore").strip()[-300:]
             common_globals.log.warning(
                 f"{common_logs.get_medialog(ele)} ffmpeg failed during DRM merge"
+                + (f" — {stderr_tail}" if stderr_tail else "")
             )
             common_globals.log.debug(
-                f"{common_logs.get_medialog(ele)} ffmpeg {t.stderr.decode()}"
+                f"{common_logs.get_medialog(ele)} ffmpeg {t.stderr.decode(errors='ignore')}"
             )
             common_globals.log.debug(
                 f"{common_logs.get_medialog(ele)} ffmpeg {t.stdout.decode()}"
@@ -521,8 +529,25 @@ class AltDownloadManager(DownloadManager):
             with _:
                 try:
                     for item in [audio, video]:
-                        if item is not None:
+                        if item is None:
+                            continue
+                        try:
                             item = await keyhelpers.un_encrypt(item, c, ele)
+                        except Exception:
+                            # Poison-pill cleanup: a track that fails
+                            # decryption is corrupt/truncated (all observed
+                            # cases are chunked no-Content-Length downloads).
+                            # The resume cache marks it 'complete', so future
+                            # runs would skip the download and re-decrypt
+                            # this same bad file forever. Drop the file and
+                            # the cached headers so the next attempt fetches
+                            # the track fresh.
+                            try:
+                                pathlib.Path(item["path"]).unlink(missing_ok=True)
+                            except Exception:
+                                pass
+                            await self._set_data(ele, item, None)
+                            raise
                 except Exception as E:
                     # DRM failures were debug-only (traceback_) — invisible
                     # in the GUI pane/console at NORMAL level, so protected
