@@ -55,7 +55,7 @@ class AltDownloadManager(DownloadManager):
         # Acquire semaphore at the very beginning of the process
         await common_globals.sem.acquire()
         try:
-            common_globals.log.debug(
+            common_globals.log.info(
                 f"{common_logs.get_medialog(ele)} Downloading with protected media downloader"
             )
 
@@ -524,6 +524,13 @@ class AltDownloadManager(DownloadManager):
                         if item is not None:
                             item = await keyhelpers.un_encrypt(item, c, ele)
                 except Exception as E:
+                    # DRM failures were debug-only (traceback_) — invisible
+                    # in the GUI pane/console at NORMAL level, so protected
+                    # videos appeared to fail "blank". Surface the WHY.
+                    common_globals.log.warning(
+                        f"{get_medialog(ele)} [attempt {common_globals.attempt.get()}/{get_download_retries()}] "
+                        f"DRM key/decrypt failed: {type(E).__name__}: {E}"
+                    )
                     common_globals.log.traceback_(E)
                     common_globals.log.traceback_(traceback.format_exc())
                     raise E
