@@ -194,8 +194,13 @@ class AltDownloadManager(DownloadManager):
                 total_timeout=None,
                 read_timeout=get_chunk_timeout(),
             ) as l:
-                item["total"] = int(l.headers.get("content-length"))
-                total = item["total"]
+                # Some CDN edges serve DRM tracks with chunked transfer
+                # encoding and no Content-Length header; int(None) used to
+                # burn every retry for those tracks. Download without a
+                # known total instead (ffprobe verifies integrity later).
+                content_length = l.headers.get("content-length")
+                total = int(content_length) if content_length else None
+                item["total"] = total
 
                 data = {
                     "content-total": total,
@@ -216,10 +221,31 @@ class AltDownloadManager(DownloadManager):
                     total = item["total"]
                     return item
                 elif total != resume_size:
+                    if total is None and resume_size:
+                        # no total -> no Range resume; a stale .part would be
+                        # appended to and corrupted, so start clean
+                        common_globals.log.debug(
+                            f"{get_medialog(ele)} unknown content-length; discarding partial file"
+                        )
+                        pathlib.Path(placeholderObj.tempfilepath).unlink(
+                            missing_ok=True
+                        )
                     await self._download_fileobject_writer(
                         total, l, ele, placeholderObj, item
                     )
-                    await self._total_change_helper(total)
+                if total is None:
+                    # chunked response: learn the real size from disk so the
+                    # resume cache, size checker, and progress totals all
+                    # keep working with a real number
+                    total = (
+                        pathlib.Path(placeholderObj.tempfilepath)
+                        .absolute()
+                        .stat()
+                        .st_size
+                    )
+                    item["total"] = total
+                    await self._set_data(ele, item, data | {"content-total": total})
+                await self._total_change_helper(total)
 
             await self._size_checker(placeholderObj.tempfilepath, ele, total)
             return item
