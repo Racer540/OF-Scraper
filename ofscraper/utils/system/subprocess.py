@@ -5,6 +5,16 @@ import asyncio
 import ofscraper.utils.of_env.of_env as of_env
 
 
+def _no_window_flags():
+    # Windowed (GUI) exe on Windows has no console, so every console
+    # subprocess (ffmpeg, ffprobe, mp4decrypt) would pop its own black
+    # window. Output is piped anyway, so hide the child console. No-op
+    # when a real console exists (dev runs, CLI exe).
+    if sys.platform == "win32":
+        return subprocess.CREATE_NO_WINDOW
+    return 0
+
+
 def run(
     *args,
     log=None,
@@ -13,7 +23,7 @@ def run(
     capture_output=None,
     level=None,
     name=None,
-    timeout=600, 
+    timeout=600,
     **kwargs,
 ):
     """
@@ -30,15 +40,17 @@ def run(
     name = name or " ".join(cmd_args)
 
     if level is None:
-        level = int(of_env.getattr("LOG_SUBPROCESS_LEVEL", "0"))
+        level = int(of_env.getattr("LOG_SUBPROCESS_LEVEL"))
 
     final_args = (cmd_args,) + args[1:]
 
     stdout = stdout if stdout else subprocess.PIPE
     stderr = stderr if stderr else subprocess.PIPE
     if capture_output:
-        stdout = None  
+        stdout = None
         stderr = None
+
+    kwargs.setdefault("creationflags", _no_window_flags())
 
     try:
         t = subprocess.run(
@@ -91,7 +103,7 @@ async def async_run(
     name = name or " ".join(cmd_args)
 
     if level is None:
-        level = int(of_env.getattr("LOG_SUBPROCESS_LEVEL", "0"))
+        level = int(of_env.getattr("LOG_SUBPROCESS_LEVEL"))
 
     if capture_output:
         kwargs["stdout"] = asyncio.subprocess.PIPE
@@ -101,6 +113,8 @@ async def async_run(
         kwargs["stdin"] = asyncio.subprocess.PIPE
         if text and isinstance(input, str):
             input = input.encode("utf-8")
+
+    kwargs.setdefault("creationflags", _no_window_flags())
 
     process = await asyncio.create_subprocess_exec(*cmd_args, **kwargs)
 

@@ -117,5 +117,8 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
+    # GUI build: no console window. Double-clicking opens only the GUI
+    # window; logs stay visible in the GUI log pane and the log file.
+    # (The CLI build below in onefile-cli.spec keeps console=True.)
+    console=False,
 )

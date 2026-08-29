@@ -114,7 +114,22 @@ def render(nav):
             )
         with ui.row().classes("w-full items-center"):
             before = ui.input("Before (YYYY-MM-DD)").classes("grow")
-            after = ui.input("After (YYYY-MM-DD)").classes("grow")
+            after = (
+                ui.input("After (--after)", placeholder="2000  or  2024-06-01")
+                .classes("grow")
+                .tooltip(
+                    "Only process media from posts published at/after this date.\n"
+                    "Accepts a full date (2024-06-01), a bare year (2000 = Jan 1, 2000), "
+                    "or relative text like '30 days ago'.\n"
+                    "Pairs with 'Force all / dupes (-e)' under Media filters to "
+                    "re-scan everything from that date onward."
+                )
+            )
+        ui.label(
+            "--after: skips posts published before the given date — a bare year "
+            "works too, so '2000' means everything from Jan 1 2000 onward. "
+            "Combine with Force all (-e) to re-download the whole library."
+        ).classes("text-xs text-gray-400")
 
     # ---------------------------------------------------------- media filters
     with ui.expansion("Media filters", icon="movie").classes("w-full"):
