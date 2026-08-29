@@ -611,10 +611,22 @@ class sessionManager:
         wait_min = kwargs.get("wait_min") or self._wait_min
         wait_max = kwargs.get("wait_max") or self._wait_max
 
+        # Retry only the request phase; the yield stays OUTSIDE the retry
+        # machinery (below). Yielding inside `with _:` let tenacity's
+        # AttemptManager (which swallows ALL BaseExceptions on __exit__)
+        # capture exceptions thrown into the yield by the consumer (chunk
+        # timeouts mid-stream) -- and even GeneratorExit during close() --
+        # and then "retry" a brand-new request inside athrow()/aclose().
+        # That produced "RuntimeError: async generator ignored
+        # GeneratorExit", a double semaphore release, and leaked the
+        # abandoned response connection.
+        r = None
         async for _ in AsyncRetrying(
             stop=tenacity.stop.stop_after_attempt(retries),
             wait=tenacity.wait_random(min=wait_min, max=wait_max),
-            retry=retry_if_not_exception_type((KeyboardInterrupt, SystemExit)),
+            retry=retry_if_not_exception_type(
+                (KeyboardInterrupt, SystemExit, asyncio.CancelledError)
+            ),
             reraise=True,
             before_sleep=lambda retry_state: (
                 self._log.debug(
@@ -668,13 +680,22 @@ class sessionManager:
                             )
                             raise SystemExit("OnlyFans Maintenance detected.")
                         r.raise_for_status()
-                    self._sem.release()
-                    yield r
-                    return
                 except Exception as E:
                     await self._async_handle_error(E, exceptions)
+                    raise
+                finally:
                     self._sem.release()
-                    raise E
+
+        try:
+            yield r
+        finally:
+            # Hand the connection back to the pool even when the consumer
+            # abandons the stream mid-download.
+            if r is not None:
+                try:
+                    await r.release()
+                except Exception:
+                    pass
 
     @property
     def sleep(self):
