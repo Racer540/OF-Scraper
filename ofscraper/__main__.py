@@ -14,8 +14,11 @@ def _ensure_stdio():
     # Windowed (console=False) exe: sys.stdout/stderr are None (or a minimal
     # NullWriter on newer PyInstaller) and rich/logging/print expect a real
     # stream. Point them at devnull so nothing crashes trying to print.
+    # MUST be utf-8 with errors='replace': a plain open() inherits the
+    # cp1252 codepage and the first emoji printed (e.g. the green dot in
+    # print_sign_status) kills the job with UnicodeEncodeError.
     if sys.stdout is None or sys.stderr is None:
-        devnull = open(os.devnull, "w")
+        devnull = open(os.devnull, "w", encoding="utf-8", errors="replace")
         sys.stdout = sys.stdout or devnull
         sys.stderr = sys.stderr or devnull
 
