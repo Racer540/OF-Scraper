@@ -60,7 +60,7 @@ async def un_encrypt(item, c, ele, input_=None):
             # that visible instead of dying later in get_ffmpeg_key
             raise Exception(
                 f"{get_medialog(ele)} DRM key service returned an invalid "
-                f"key (key-mode={keymode}): {key[:120]!r}"
+                f"key (key-mode={keymode}): {key[:300]!r}"
             )
         log.debug(f"{get_medialog(ele)} retrive new key: {key}")
         newpath = pathlib.Path(

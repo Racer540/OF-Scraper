@@ -109,10 +109,18 @@ def verify_media_integrity(file_path, expected_duration_seconds=None):
             )
             return False
 
-    log.debug(
-        f"Integrity Check Succeed: {pathlib.Path(file_path).name}\n"
-        f"Expected: {expected_duration_seconds}s | Actual: {actual_duration:.2f}s "
-        f"| Diff: {diff:.2f}s (Limit: 3.0s)"
-    )
+        log.debug(
+            f"Integrity Check Succeed: {pathlib.Path(file_path).name}\n"
+            f"Expected: {expected_duration_seconds}s | Actual: {actual_duration:.2f}s "
+            f"| Diff: {diff:.2f}s (Limit: 3.0s)"
+        )
+    else:
+        # no expected duration from the API for this media -- the container
+        # parse above is the whole check (the old code crashed here with
+        # UnboundLocalError on 'diff', failing perfectly good downloads)
+        log.debug(
+            f"Integrity Check Succeed: {pathlib.Path(file_path).name}\n"
+            f"No expected duration | Actual: {actual_duration:.2f}s"
+        )
 
     return True
