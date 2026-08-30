@@ -55,7 +55,7 @@ class AltDownloadManager(DownloadManager):
         # Acquire semaphore at the very beginning of the process
         await common_globals.sem.acquire()
         try:
-            common_globals.log.debug(
+            common_globals.log.info(
                 f"{common_logs.get_medialog(ele)} Downloading with protected media downloader"
             )
 
@@ -156,7 +156,9 @@ class AltDownloadManager(DownloadManager):
     async def _alt_download_sendreq(self, item, c, ele, placeholderObj):
         try:
             _attempt = self._alt_attempt_get(item)
-            base_url = re.sub("[0-9a-z]*\.mpd$", "", ele.mpd, re.IGNORECASE)
+            base_url = re.sub(
+                r"[0-9a-z]*\.mpd(\?.*)?$", "", ele.mpd, flags=re.IGNORECASE
+            )
             url = f"{base_url}{item['origname']}"
             common_globals.log.debug(
                 f"{get_medialog(ele)} Attempting to download media {item['origname']} with {url}"
@@ -180,7 +182,9 @@ class AltDownloadManager(DownloadManager):
             total = None
             common_globals.log.debug(f"{get_medialog(ele)} resume header {headers}")
             params = get_alt_params(ele)
-            base_url = re.sub("[0-9a-z]*\.mpd$", "", ele.mpd, re.IGNORECASE)
+            base_url = re.sub(
+                r"[0-9a-z]*\.mpd(\?.*)?$", "", ele.mpd, flags=re.IGNORECASE
+            )
             url = f"{base_url}{item['origname']}"
             headers = {"Cookie": f"{ele.hls_header}{auth_requests.get_cookies_str()}"}
             common_globals.log.debug(
@@ -194,8 +198,13 @@ class AltDownloadManager(DownloadManager):
                 total_timeout=None,
                 read_timeout=get_chunk_timeout(),
             ) as l:
-                item["total"] = int(l.headers.get("content-length"))
-                total = item["total"]
+                # Some CDN edges serve DRM tracks with chunked transfer
+                # encoding and no Content-Length header; int(None) used to
+                # burn every retry for those tracks. Download without a
+                # known total instead (ffprobe verifies integrity later).
+                content_length = l.headers.get("content-length")
+                total = int(content_length) if content_length else None
+                item["total"] = total
 
                 data = {
                     "content-total": total,
@@ -216,10 +225,34 @@ class AltDownloadManager(DownloadManager):
                     total = item["total"]
                     return item
                 elif total != resume_size:
+                    if resume_size:
+                        # The Range header built above is discarded before the
+                        # request (headers are overwritten), so the writer can
+                        # only append a FULL fresh stream — appending onto a
+                        # stale .part would corrupt it. Always start clean.
+                        common_globals.log.debug(
+                            f"{get_medialog(ele)} discarding partial file "
+                            f"({resume_size} bytes) for fresh download"
+                        )
+                        pathlib.Path(placeholderObj.tempfilepath).unlink(
+                            missing_ok=True
+                        )
                     await self._download_fileobject_writer(
                         total, l, ele, placeholderObj, item
                     )
-                    await self._total_change_helper(total)
+                if total is None:
+                    # chunked response: learn the real size from disk so the
+                    # resume cache, size checker, and progress totals all
+                    # keep working with a real number
+                    total = (
+                        pathlib.Path(placeholderObj.tempfilepath)
+                        .absolute()
+                        .stat()
+                        .st_size
+                    )
+                    item["total"] = total
+                    await self._set_data(ele, item, data | {"content-total": total})
+                await self._total_change_helper(total)
 
             await self._size_checker(placeholderObj.tempfilepath, ele, total)
             return item
@@ -325,20 +358,25 @@ class AltDownloadManager(DownloadManager):
             ]
         )
 
-        # Async run FFmpeg with the -y flag
+        # Async run FFmpeg with the -y flag; capture_output is required in
+        # the windowed exe (no console to inherit) or stderr is lost and
+        # merge failures stay silent
         t = await async_run(
             ffmpeg_cmd,
             name="ffmpeg",
             level=of_env.getattr("FFMPEG_SUBPROCESS_LEVEL"),
+            capture_output=True,
         )
 
         # Fallback error check if stderr is captured and Output is missing
-        if t.stderr and t.stderr.decode().find("Output") == -1:
+        if t.stderr and t.stderr.decode(errors="ignore").find("Output") == -1:
+            stderr_tail = t.stderr.decode(errors="ignore").strip()[-300:]
             common_globals.log.warning(
                 f"{common_logs.get_medialog(ele)} ffmpeg failed during DRM merge"
+                + (f" — {stderr_tail}" if stderr_tail else "")
             )
             common_globals.log.debug(
-                f"{common_logs.get_medialog(ele)} ffmpeg {t.stderr.decode()}"
+                f"{common_logs.get_medialog(ele)} ffmpeg {t.stderr.decode(errors='ignore')}"
             )
             common_globals.log.debug(
                 f"{common_logs.get_medialog(ele)} ffmpeg {t.stdout.decode()}"
@@ -498,8 +536,32 @@ class AltDownloadManager(DownloadManager):
                         if item is not None:
                             item = await keyhelpers.un_encrypt(item, c, ele)
                 except Exception as E:
+                    # DRM failures were debug-only (traceback_) — invisible
+                    # in the GUI pane/console at NORMAL level, so protected
+                    # videos appeared to fail "blank". Surface the WHY.
+                    common_globals.log.warning(
+                        f"{get_medialog(ele)} [attempt {common_globals.attempt.get()}/{get_download_retries()}] "
+                        f"DRM key/decrypt failed: {type(E).__name__}: {E}"
+                    )
                     common_globals.log.traceback_(E)
                     common_globals.log.traceback_(traceback.format_exc())
+                    # Poison-pill cleanup for BOTH tracks. A track that
+                    # fails decryption — or is never attempted because its
+                    # cached 'download complete' marker hid a stale file
+                    # (7KB manifest XML from the jammed-URL era) — keeps
+                    # its .part and cache entry, so every future run skips
+                    # the download and re-decrypts the same bad file
+                    # forever. Successfully decrypted tracks are renamed
+                    # away from .part and are left untouched.
+                    for item_ in (audio, video):
+                        if item_ is None:
+                            continue
+                        try:
+                            if str(item_["path"]).lower().endswith(".part"):
+                                pathlib.Path(item_["path"]).unlink(missing_ok=True)
+                                await self._set_data(ele, item_, None)
+                        except Exception:
+                            pass
                     raise E
 
     async def _add_download_job_task(self, ele, total=None, placeholderObj=None):

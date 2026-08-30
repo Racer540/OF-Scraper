@@ -165,7 +165,12 @@ class MainDownloadManager(DownloadManager):
                 total_timeout=None,
                 read_timeout=get_chunk_timeout(),
             ) as r:
-                total = int(r.headers["content-length"])
+                # Some CDN edges serve files with chunked transfer encoding
+                # and no Content-Length header; the old int(None)/KeyError
+                # burned every retry for those. Download without a known
+                # total, then learn the real size from disk.
+                content_length = r.headers.get("content-length")
+                total = int(content_length) if content_length else None
                 data = {
                     "content-total": total,
                     "content-type": r.headers.get("content-type"),
@@ -178,7 +183,7 @@ class MainDownloadManager(DownloadManager):
                     f"{common_logs.get_medialog(ele)} total from request {format_size(data.get('content-total')) if data.get('content-total') else 'unknown'}"
                 )
                 await self._set_data(ele, data)
-                content_type = r.headers.get("content-type").split("/")[-1]
+                content_type = (r.headers.get("content-type") or "").split("/")[-1]
                 content_type = content_type or common.get_unknown_content_type(ele)
                 if not placeholderObj:
                     placeholderObj = await placeholder.Placeholders(
@@ -189,11 +194,27 @@ class MainDownloadManager(DownloadManager):
                     total = 0
                     return (total, tempholderObj.tempfilepath, placeholderObj)
                 elif total != resume_size:
-                    self._resume_cleaner(resume_size, total, tempholderObj.tempfilepath)
+                    if total is not None:
+                        self._resume_cleaner(
+                            resume_size, total, tempholderObj.tempfilepath
+                        )
+                    elif resume_size:
+                        # unknown total -> cannot Range resume; start clean
+                        pathlib.Path(tempholderObj.tempfilepath).unlink(
+                            missing_ok=True
+                        )
                     await self._download_fileobject_writer(
                         r, ele, tempholderObj, placeholderObj, total
                     )
-                    await self._total_change_helper(total)
+                if total is None:
+                    total = (
+                        pathlib.Path(tempholderObj.tempfilepath)
+                        .absolute()
+                        .stat()
+                        .st_size
+                    )
+                    await self._set_data(ele, {**data, "content-total": total})
+                await self._total_change_helper(total)
             await self._size_checker(tempholderObj.tempfilepath, ele, total)
             return (total, tempholderObj.tempfilepath, placeholderObj)
         except Exception as E:

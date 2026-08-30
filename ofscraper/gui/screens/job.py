@@ -47,7 +47,7 @@ def render(nav):
     with ui.row().classes("w-full items-center"):
         ui.label("Job Monitor").classes("text-2xl font-bold")
         ui.space()
-        status_label = ui.label().classes("text-lg")
+        status_label = ui.label().classes("text-lg wrap")
         cancel_button = ui.button("Cancel", color="negative")
 
     desc_label = ui.label().classes("text-sm text-gray-400")
@@ -63,12 +63,15 @@ def render(nav):
 
     def refresh_status():
         status = state.status
-        status_label.text = f"Status: {status.value.capitalize()}"
-        desc_label.text = state.job_description
-        if state.job_result:
-            status_label.text += f" — {state.job_result}"
         if state.job_error:
-            status_label.text += f" (error: {state.job_error})"
+            # job finished with a failure -- say so instead of the
+            # contradictory "Idle (error: ...)"
+            status_label.text = f"Status: Failed — {state.job_error}"
+        else:
+            status_label.text = f"Status: {status.value.capitalize()}"
+            if state.job_result:
+                status_label.text += f" — {state.job_result}"
+        desc_label.text = state.job_description
         cancel_button.set_enabled(status == JobStatus.RUNNING)
         if status == JobStatus.CANCELLING:
             status_label.text += " — stopping (waiting for job to unwind)"

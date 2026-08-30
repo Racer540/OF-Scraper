@@ -77,8 +77,14 @@ class JobRunner:
         except GuiModeError as E:  # future GUI control-flow errors
             state.finish_job(result=str(E))
         except Exception as E:
-            log.debug(traceback.format_exc())
-            log.error(f"Job failed: {E}")
+            # report inside its own guard: if logging the error itself
+            # raises (e.g. a handler choking on the error text), that must
+            # never mask the real failure with "exited unexpectedly"
+            try:
+                log.debug(traceback.format_exc())
+                log.error(f"Job failed: {E}")
+            except Exception:
+                pass
             state.finish_job(error=f"{type(E).__name__}: {E}")
         finally:
             # belt-and-suspenders: SystemExit/GeneratorExit skip the except

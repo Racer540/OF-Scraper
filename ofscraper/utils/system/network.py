@@ -5,21 +5,28 @@ import traceback
 import httpx
 
 import ofscraper.managers.sessionmanager.sessionmanager as sessionManager
-import ofscraper.utils.console as console_
 import ofscraper.utils.of_env.of_env as of_env
 import ofscraper.utils.settings as settings
 
+CDM_HELP = (
+    "check your cdm settings: "
+    "https://of-scraper.gitbook.io/of-scraper/cdm-options"
+)
+
 
 def check_cdm():
-    console = console_.get_shared_console()
+    """Health-check the CDM key service.
+
+    All messages go through the 'shared' logger (not console.print) so they
+    reach the console, the log file, AND the GUI log pane -- in the windowed
+    exe, console.print disappears into devnull.
+    """
     log = logging.getLogger("shared")
 
     keymode = settings.get_settings().key_mode
-    console.print(f"[yellow]Key Mode: {keymode}\n\n[/yellow]")
+    log.info(f"Key Mode: {keymode}")
     if keymode == "manual":
-        console.print(
-            "[yellow]WARNING:Make sure you have all the correct settings for choosen cdm\nhttps://of-scraper.gitbook.io/of-scraper/cdm-options\n\n[/yellow]"
-        )
+        log.warning(f"manual key mode: verify your device settings — {CDM_HELP}")
         return True
     elif keymode == "cdrm":
         url = of_env.getattr("CDRM")
@@ -30,32 +37,37 @@ def check_cdm():
             wait_min=of_env.getattr("CDM_MIN_WAIT"),
             wait_max=of_env.getattr("CDM_MAX_WAIT"),
         ) as c:
-            with c.requests(url=url, headers={}) as r:
-                if r.ok:
-                    console.print("[green] CDM service seems to be working\n[/green]")
-                    console.print(
-                        "[yellow]WARNING:Make sure you have all the correct settings for choosen cdm\nhttps://of-scraper.gitbook.io/of-scraper/cdm-options\n\n[/yellow]"
-                    )
+            # The CDRM API is POST-only: a plain GET 404s on a perfectly
+            # healthy service (self-hosted containers answer wrong-method
+            # requests with a 404 page). Probe with a dummy POST instead --
+            # any 2xx response proves the endpoint exists and answers.
+            with c.requests(
+                url=url, headers={}, method="post", json={}
+            ) as r:
+                if 200 <= r.status < 300:
+                    log.info(f"CDM key service reachable at {url}")
                     return True
                 else:
-                    console.print(
-                        "[red]CDM return an error\nThis may cause a lot of failed downloads\n consider switching\nhttps://of-scraper.gitbook.io/of-scraper/cdm-options\n\n[/red]"
+                    log.warning(
+                        f"CDM key service returned HTTP {r.status} from {url} "
+                        f"— DRM (protected) downloads will fail until it "
+                        f"answers; {CDM_HELP}"
                     )
-                    log.debug(f"[bold] cdm status[/bold]: {r.status}")
-                    log.debug(f"[bold]  cdm text [/bold]: {r.text_()}")
-                    log.debug(f"[bold]  cdm headers [/bold]: {r.headers}")
+                    log.debug(f"cdm body: {r.text_()}")
                     time.sleep(3.5)
                     return False
     except httpx.TimeoutException:
-        console.print(
-            f"[red]CDM service {keymode} timed out and seems to be down\nThis may cause a lot of failed downloads\nPlease confirm by checking the url:{url}\n Consider switching\nhttps://of-scraper.gitbook.io/of-scraper/cdm-options\n\n[/red]"
+        log.warning(
+            f"CDM key service timed out and seems down ({url}) — DRM "
+            f"(protected) downloads will fail; {CDM_HELP}"
         )
         log.debug(traceback.format_exc())
         time.sleep(3.5)
 
     except Exception as E:
-        console.print(
-            f"[red]CDM service {keymode} has an issue {E}\nThis may cause a lot of failed downloads\nPlease confirm by checking the url:{url}\n Consider switching\nhttps://of-scraper.gitbook.io/of-scraper/cdm-options\n\n[/red]"
+        log.warning(
+            f"CDM key service has an issue: {E} ({url}) — DRM (protected) "
+            f"downloads will fail; {CDM_HELP}"
         )
         log.debug(traceback.format_exc())
         time.sleep(3.5)

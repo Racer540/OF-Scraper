@@ -45,8 +45,17 @@ DESCRIPTIONS = {
     # file_options
     "save_location": "Root folder for all downloads",
     "dir_format": "Folder pattern per model, e.g. {username}/{responsetype}",
-    "file_format": "File name pattern, e.g. {filename}.{ext}",
-    "textlength": "Max characters of post text saved (0 = unlimited)",
+    "file_format": (
+        "File name pattern. Useful placeholders: {text} = post caption "
+        "(cleaned; falls back to media ID when the post has no text), "
+        "{date}, {post_id}, {media_id}, {label}, {responsetype}, "
+        "{mediatype}, {quality}, {filename} = original CDN name "
+        "(hash-like), {ext}. Friendly example: {date}_{text}_{media_id}.{ext}"
+    ),
+    "textlength": (
+        "Max characters of post text used in {text} file names "
+        "(0 = unlimited; 50 is a good balance)"
+    ),
     "space_replacer": "Character that replaces spaces in names",
     "space-replacer": "Character that replaces spaces in names",
     "date": "Date format used in names (arrow/strftime, e.g. %Y-%m-%d)",

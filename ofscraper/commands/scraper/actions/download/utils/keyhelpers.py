@@ -51,8 +51,17 @@ async def un_encrypt(item, c, ele, input_=None):
         elif keymode == "cdrm":
             key = await key_helper_cdrm(c, item["pssh"], ele.license, ele.id)
         if not key:
-            raise Exception(f"{get_medialog(ele)} Could not get key")
+            raise Exception(
+                f"{get_medialog(ele)} Could not get DRM key (key-mode={keymode})"
+            )
         key = key.strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{32}:[0-9a-fA-F]{32}", key):
+            # CDRM answers errors with a plain-text 'message' field; make
+            # that visible instead of dying later in get_ffmpeg_key
+            raise Exception(
+                f"{get_medialog(ele)} DRM key service returned an invalid "
+                f"key (key-mode={keymode}): {key[:300]!r}"
+            )
         log.debug(f"{get_medialog(ele)} retrive new key: {key}")
         newpath = pathlib.Path(
             re.sub(
@@ -78,17 +87,21 @@ async def un_encrypt(item, c, ele, input_=None):
             ],
             level=env.getattr("FFMPEG_SUBPROCESS_LEVEL"),
             name="ffmpeg",
+            capture_output=True,
         )
         if not pathlib.Path(newpath).exists():
-            log.debug(f"{get_medialog(ele)} ffmpeg {r.stderr.decode()}")
-            log.debug(f"{get_medialog(ele)} ffmpeg {r.stdout.decode()}")
             await asyncio.get_event_loop().run_in_executor(
                 common_globals.thread,
                 partial(
                     cache.set, ele.license, None, expire=of_env.getattr("KEY_EXPIRY")
                 ),
             )
-            raise Exception(f"{get_medialog(ele)} ffmpeg decryption failed")
+            stderr_tail = (r.stderr or b"").decode(errors="ignore").strip()[-300:]
+            log.debug(f"{get_medialog(ele)} ffmpeg rc={r.returncode} stderr: {stderr_tail}")
+            raise Exception(
+                f"{get_medialog(ele)} ffmpeg DRM decryption failed (rc={r.returncode})"
+                + (f" — {stderr_tail}" if stderr_tail else "")
+            )
         else:
             log.debug(f"{get_medialog(ele)} ffmpeg  decrypt success {newpath}")
             pathlib.Path(item["path"]).unlink(missing_ok=True)
@@ -132,9 +145,24 @@ async def key_helper_cdrm(c, pssh, licence_url, id):
             total_timeout=of_env.getattr("CDM_TIMEOUT"),
             skip_expection_check=True,
         ) as r:
+            if not (200 <= r.status < 300):
+                body = ""
+                try:
+                    body = (await r.text_())[:200]
+                except Exception:
+                    pass
+                raise Exception(
+                    f"CDRM key service HTTP {r.status} "
+                    f"({of_env.getattr('CDRM')}): {body}"
+                )
             data = await r.json_()
             log.debug(f"cdrm json {data}")
-            key = data["message"]
+            key = (data or {}).get("message") if isinstance(data, dict) else None
+        if not key:
+            raise Exception(
+                f"CDRM key service returned no key "
+                f"({of_env.getattr('CDRM')}): {str(data)[:200]}"
+            )
         return key
     except Exception as E:
         # the free cdrm key service is a hard dependency for protected

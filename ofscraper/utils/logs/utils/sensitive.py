@@ -46,8 +46,13 @@ def getSenstiveDict() -> dict:
     # 2. Redact profile/download directory paths
     profile_dir = paths.get_username()
     if profile_dir:
-        # Escape the path for regex and replace it
-        combined_patterns[re.escape(str(profile_dir))] = "{home_directory}"
+        # Escape the path for regex and replace it. Word boundaries keep the
+        # redaction from eating the username when it appears INSIDE another
+        # identifier -- e.g. user 'racer' must not mangle the domain
+        # 'cdrm.racer540.net' into 'cdrm.{home_directory}540.net'.
+        combined_patterns[
+            r"\b" + re.escape(str(profile_dir)) + r"\b"
+        ] = "{home_directory}"
 
     # Add any patterns the user added manually during the session
     combined_patterns.update(_USER_ADDED_PATTERNS)

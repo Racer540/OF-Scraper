@@ -17,9 +17,9 @@ try:
     ffmpeg_binary_path = FFmpeg().get_ffmpeg_bin()
     # The spec format for binaries is a list of tuples: (source_path, destination_in_bundle)
     ffmpeg_binary_tuple = (ffmpeg_binary_path, '.')
-    print(f"✅ Found ffmpeg binary to bundle: {ffmpeg_binary_path}")
+    print(f"[OK] Found ffmpeg binary to bundle: {ffmpeg_binary_path}")
 except Exception as e:
-    print(f"⚠️ WARNING: Could not find ffmpeg binary; it will not be bundled. Error: {e}")
+    print(f"[WARN]: Could not find ffmpeg binary; it will not be bundled. Error: {e}")
     ffmpeg_binary_tuple = None
 
 # This Analysis block contains all the necessary dependency information
