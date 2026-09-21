@@ -250,7 +250,14 @@ def allow_check_dupes():
 
 
 def get_areas():
-    return settings.get_settings().check_area
+    # '-ca all' previously matched NO branch — the literal "All" never hit
+    # the per-area checks below, so the check ran empty. Expand it like the
+    # download/like accessors do.
+    areas = set(settings.get_settings().check_area or [])
+    if "All" in areas:
+        areas.update(("Archived", "Timeline", "Pinned", "Labels", "Streams"))
+        areas.discard("All")
+    return areas
 
 
 def checker():

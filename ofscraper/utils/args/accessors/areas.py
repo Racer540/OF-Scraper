@@ -1,11 +1,12 @@
-import ofscraper.utils.of_env.of_env as of_env
 import ofscraper.utils.settings as settings
 
 
 def get_like_area():
     post = None
-    all_choices = ["Archived", "Timeline", "Pinned", "Streams"]
-    all_choices.append("Label") if of_env.getattr("INCLUDE_LABELS_ALL") else None
+    # 'all' expands to every likeable area — Labels included. (The old
+    # INCLUDE_LABELS_ALL gate appended the singular "Label", which never
+    # matched the consumers' "Labels" checks, so it was dead either way.)
+    all_choices = ["Archived", "Timeline", "Pinned", "Streams", "Labels"]
     if len(settings.get_settings().like_area or []) == 0:
         post = set(settings.get_settings().posts or [])
     else:
@@ -17,6 +18,7 @@ def get_like_area():
 
 def get_download_area():
     post = None
+    # 'all' expands to every area — Labels included.
     all_choices = [
         "Highlights",
         "Archived",
@@ -27,8 +29,8 @@ def get_download_area():
         "Purchased",
         "Profile",
         "Streams",
+        "Labels",
     ]
-    all_choices.append("Label") if of_env.getattr("INCLUDE_LABELS_ALL") else None
     if len(settings.get_settings().download_area or []) == 0:
         post = set(settings.get_settings().posts or [])
     else:

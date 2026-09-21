@@ -1,9 +1,10 @@
 # .github/workflows/exe-build.yml
 name: Build Executables
 
-# Rebuild the Windows onefile exes on every PR update and every push to
+# Rebuild the onefile exes on every PR update and every push to
 # main/gui, so fresh binaries (full GUI build + lean CLI-only build) are
-# always downloadable from the run's artifacts.
+# always downloadable from the run's artifacts. Built on all three
+# platforms: windows, linux, macos.
 on:
   pull_request:
   push:
@@ -16,17 +17,32 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The PyInstaller specs print emoji status lines; the Windows console's
-  # cp1252 codepage would otherwise crash Python print() with UnicodeEncodeError
+  # The PyInstaller specs print emoji status lines; cp1252 consoles/streams
+  # would otherwise crash Python print() with UnicodeEncodeError
   PYTHONUTF8: "1"
 
 permissions:
   contents: read
 
 jobs:
-  build-windows:
-    name: Build Windows onefile exes (GUI + CLI)
-    runs-on: windows-latest
+  build:
+    name: Build onefile exes on ${{ matrix.suffix }} (GUI + CLI)
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            suffix: windows
+            exe_ext: .exe
+          - os: ubuntu-latest
+            suffix: linux
+            exe_ext: ""
+          - os: macos-latest
+            suffix: macos
+            exe_ext: ""
 
     defaults:
       run:
@@ -45,19 +61,27 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral/setup-uv@v4
         with:
           enable-cache: true
 
       - name: Install venv and dependencies
         run: |
           uv venv
-          . .venv/Scripts/activate
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            . .venv/Scripts/activate
+          else
+            source .venv/bin/activate
+          fi
           uv sync --extra ffmpeg # pyffmpeg lets the specs bundle ffmpeg
 
       - name: Install PyInstaller
         run: |
-          . .venv/Scripts/activate
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            . .venv/Scripts/activate
+          else
+            source .venv/bin/activate
+          fi
           uv pip install pyinstaller==6.14.1 # pin matching package-builder-release
 
       # Both builds use specs (not bare flags) so NiceGUI static assets, the
@@ -67,7 +91,11 @@ jobs:
       # onefile-cli.spec    -> same entry point with the GUI stack excluded
       - name: Build onefile executables
         run: |
-          . .venv/Scripts/activate
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            . .venv/Scripts/activate
+          else
+            source .venv/bin/activate
+          fi
           pyinstaller specs/onefile.spec --noconfirm --clean
           pyinstaller specs/onefile-cli.spec --noconfirm --clean
 
@@ -75,22 +103,22 @@ jobs:
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
-          mv dist/ofscraper_file.exe "dist/ofscraper_gui_windows_${SHORT_SHA}.exe"
-          mv dist/ofscraper_cli_file.exe "dist/ofscraper_cli_windows_${SHORT_SHA}.exe"
+          mv "dist/ofscraper_file${{ matrix.exe_ext }}" "dist/ofscraper_gui_${{ matrix.suffix }}_${SHORT_SHA}${{ matrix.exe_ext }}"
+          mv "dist/ofscraper_cli_file${{ matrix.exe_ext }}" "dist/ofscraper_cli_${{ matrix.suffix }}_${SHORT_SHA}${{ matrix.exe_ext }}"
           ls -lh dist/
 
       - name: Upload GUI Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ofscraper-gui-windows-${{ env.SHORT_SHA }}
-          path: dist/ofscraper_gui_windows_*.exe
+          name: ofscraper-gui-${{ matrix.suffix }}-${{ env.SHORT_SHA }}
+          path: dist/ofscraper_gui_${{ matrix.suffix }}_*${{ matrix.exe_ext }}
           if-no-files-found: error
           retention-days: 14
 
       - name: Upload CLI Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ofscraper-cli-windows-${{ env.SHORT_SHA }}
-          path: dist/ofscraper_cli_windows_*.exe
+          name: ofscraper-cli-${{ matrix.suffix }}-${{ env.SHORT_SHA }}
+          path: dist/ofscraper_cli_${{ matrix.suffix }}_*${{ matrix.exe_ext }}
           if-no-files-found: error
           retention-days: 14

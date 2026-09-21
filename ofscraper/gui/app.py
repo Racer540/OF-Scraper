@@ -25,6 +25,21 @@ def _sanitize_argv():
             sys.argv.remove(flag)
 
 
+def _force_utf8_stdio():
+    """Stdout in the windowed exe is a cp1252 stream; any non-cp1252 char
+    in a Rich print (e.g. the '🟢 UP' status line) kills the whole job
+    with UnicodeEncodeError. Re-encode the standard streams so
+    unencodable chars are replaced instead of raising.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            # None (fully detached), non-TextIO, or already closed —
+            # nothing to fix; printing will fail the same as before.
+            pass
+
+
 def _bootstrap():
     import logging
 
@@ -189,6 +204,7 @@ def _build_ui():
 def main():
     multiprocessing.freeze_support()
     _sanitize_argv()
+    _force_utf8_stdio()
 
     import ofscraper.gui.patches as patches
 

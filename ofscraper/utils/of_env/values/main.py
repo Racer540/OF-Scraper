@@ -186,12 +186,6 @@ def load_main_config():
     # Default: "DEBUG"
     config["DEFAULT_LOG_LEVEL"] = os.getenv("OFSC_DEFAULT_LOG_LEVEL", "DEBUG")
 
-    # INCLUDE_LABELS_ALL: Whether to include all labels by default.
-    # Default: False
-    config["INCLUDE_LABELS_ALL"] = os.getenv(
-        "OFSC_INCLUDE_LABELS_ALL", "False"
-    ).lower() in ("true", "1")
-
     # DISCORD_THREAD_OVERRIDE: Whether to override Discord threading.
     # Default: False
     config["DISCORD_THREAD_OVERRIDE"] = os.getenv(
